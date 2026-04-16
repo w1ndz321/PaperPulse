@@ -60,6 +60,14 @@ python app_gradio.py
 
 ## 输出示例
 
-## License
+在线预览生成的网页：
+
+- [A-MEM](https://w1ndz321.github.io/PaperPulse/A-MEM.html)
+- [ACE](https://w1ndz321.github.io/PaperPulse/ACE.html)
+- [GEPA](https://w1ndz321.github.io/PaperPulse/GEPA.html)
+- [MemAgent](https://w1ndz321.github.io/PaperPulse/MemAgent.html)
+- [Meta-Harness](https://w1ndz321.github.io/PaperPulse/Meta-Harness.html)
+- [Meta-Harness 2](https://w1ndz321.github.io/PaperPulse/Meta-Harness2.html)
+- [OpenSWE](https://w1ndz321.github.io/PaperPulse/OPENSWE.html)
 
 MIT

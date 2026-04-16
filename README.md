@@ -7,13 +7,12 @@
 
 ## 在线预览效果
 
-- [A-MEM](https://w1ndz321.github.io/PaperPulse/A-MEM.html)
-- [ACE](https://w1ndz321.github.io/PaperPulse/ACE.html)
-- [GEPA](https://w1ndz321.github.io/PaperPulse/GEPA.html)
-- [MemAgent](https://w1ndz321.github.io/PaperPulse/MemAgent.html)
-- [Meta-Harness](https://w1ndz321.github.io/PaperPulse/Meta-Harness.html)
-- [Meta-Harness 2](https://w1ndz321.github.io/PaperPulse/Meta-Harness2.html)
-- [OpenSWE](https://w1ndz321.github.io/PaperPulse/OPENSWE.html)
+- [A-MEM：给 LLM Agent 装上“会自己整理笔记”的长期记忆，复杂推理最高接近翻倍](https://w1ndz321.github.io/PaperPulse/A-MEM.html)
+- [ACE：别再把提示词越改越短了，这篇论文让上下文像“作战手册”一样越用越强](https://w1ndz321.github.io/PaperPulse/ACE.html)
+- [GEPA：不用几万次RL采样，靠“反思改提示词”也能赢，最高少用35倍rollouts](https://w1ndz321.github.io/PaperPulse/GEPA.html)
+- [MemAgent：只用8K窗口，竟把大模型长文本问答拉到350万token还几乎不掉点](https://w1ndz321.github.io/PaperPulse/MemAgent.html)
+- [Meta-Harness：让AI自己改“外挂代码”，把手写LLM系统优化成榜单第一](https://w1ndz321.github.io/PaperPulse/Meta-Harness.html)
+- [花了147万美元，造出4.5万个可执行SWE环境：OpenSWE把“训练修Bug智能体”这件事彻底开源了](https://w1ndz321.github.io/PaperPulse/OPENSWE.html)
 ---
 
 ## Why PaperPulse

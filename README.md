@@ -59,15 +59,16 @@ python app_gradio.py
 ---
 
 ## 输出示例
-
 在线预览生成的网页：
 
-- [A-MEM](https://w1ndz321.github.io/PaperPulse/A-MEM.html)
-- [ACE](https://w1ndz321.github.io/PaperPulse/ACE.html)
-- [GEPA](https://w1ndz321.github.io/PaperPulse/GEPA.html)
-- [MemAgent](https://w1ndz321.github.io/PaperPulse/MemAgent.html)
-- [Meta-Harness](https://w1ndz321.github.io/PaperPulse/Meta-Harness.html)
-- [Meta-Harness 2](https://w1ndz321.github.io/PaperPulse/Meta-Harness2.html)
-- [OpenSWE](https://w1ndz321.github.io/PaperPulse/OPENSWE.html)
+- [示例 1](https://w1ndz321.github.io/PaperPulse/summary_20260415_161924_d9ee89.html)
+- [示例 2](https://w1ndz321.github.io/PaperPulse/summary_20260415_163754_43d9f8.html)
+- [示例 3](https://w1ndz321.github.io/PaperPulse/summary_20260415_163929_36b338.html)
+- [示例 4](https://w1ndz321.github.io/PaperPulse/summary_20260415_164103_ec5c96.html)
+- [示例 5](https://w1ndz321.github.io/PaperPulse/summary_20260415_164214_c61440.html)
+- [示例 6](https://w1ndz321.github.io/PaperPulse/summary_20260415_164337_271f73.html)
+- [示例 7](https://w1ndz321.github.io/PaperPulse/summary_20260415_164502_824ea0.html)
+- [示例 8](https://w1ndz321.github.io/PaperPulse/summary_20260415_164624_c59a4d.html)
 
+## License
 MIT

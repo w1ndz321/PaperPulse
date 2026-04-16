@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEPA：不用几万次RL采样，靠“反思改提示词”也能赢，最高少用35倍rollouts</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f0f7ff;
+            --card-bg: #ffffff;
+            --text: #1e3a5f;
+            --muted: #5a7a9a;
+            --accent: #0066cc;
+            --accent-light: #3399ff;
+            --accent-soft: #cce5ff;
+            --border: #d0e4f7;
+        }
+
+        body {
+            font-family: 'Source Serif 4', Georgia, serif;
+            background: linear-gradient(180deg, var(--bg) 0%, #e8f4ff 100%);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* === Hero Title === */
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.125rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.35;
+            color: var(--text);
+            background: linear-gradient(135deg, var(--text) 0%, #2d5a87 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* === TL;DR Card === */
+        .tldr-card {
+            background: linear-gradient(135deg, #e6f3ff 0%, #f5faff 50%, #cce8ff 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            box-shadow: 0 2px 12px rgba(0, 102, 204, 0.08);
+        }
+
+        .tldr-card::before {
+            content: 'TL;DR';
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            position: absolute;
+            top: 0.875rem;
+            left: 1.5rem;
+            background: rgba(255,255,255,0.8);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .tldr-content {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text);
+            padding-top: 0.75rem;
+        }
+
+        /* === Info Grid === */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            min-width: 0;
+            box-sizing: border-box;
+            transition: max-height 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            max-height: 78px;
+            overflow: hidden;
+        }
+
+        .info-item:hover {
+            border-color: var(--accent-soft);
+            box-shadow: 0 4px 16px rgba(0, 102, 204, 0.12);
+            z-index: 10;
+            max-height: 300px;
+        }
+
+        .info-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.375rem;
+        }
+
+        .info-value {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.4;
+            max-width: 100%;
+            word-break: break-word;
+        }
+
+        .info-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: block;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .info-link:hover {
+            text-decoration: underline;
+        }
+
+        /* === Divider - 渐变边框 === */
+        .divider-section {
+            margin: 3rem 0 2rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .divider-line {
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent-light) 70%, transparent 100%);
+            border-radius: 1px;
+        }
+
+        .divider-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            animation: breathe 3s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.35; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        /* === Prose === */
+        .prose h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.875rem;
+            color: var(--accent);
+            padding-bottom: 0.375rem;
+            border-bottom: 1px solid var(--accent-soft);
+        }
+
+        .prose h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.625rem;
+            color: var(--accent-light);
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .prose ul, .prose ol {
+            margin-bottom: 1rem;
+            padding-left: 1.25rem;
+        }
+
+        .prose li {
+            margin-bottom: 0.5rem;
+            line-height: 1.65;
+        }
+
+        .prose li::marker {
+            color: var(--accent);
+        }
+
+        .prose blockquote {
+            background: rgba(0, 102, 204, 0.06);
+            border-left: 2px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            border-radius: 0 6px 6px 0;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .prose code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .prose pre {
+            font-family: 'JetBrains Mono', monospace;
+            background: #1a365d;
+            color: #bee3f8;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .prose pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .prose strong {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .prose a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent);
+        }
+
+        .prose a:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+
+        /* === Sidebar === */
+        .sidebar {
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+        }
+
+        .toc-link {
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+            transition: all 0.15s ease;
+        }
+
+        .toc-link:hover {
+            color: var(--accent);
+            background: rgba(0, 102, 204, 0.06);
+        }
+
+        .toc-link.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-soft);
+            font-weight: 600;
+        }
+
+        .toc-link.h3 {
+            font-size: 0.75rem;
+            padding-left: 1.25rem;
+            font-weight: 400;
+        }
+
+        /* === Scroll Hint === */
+        .scroll-hint {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-align: center;
+            margin-top: 2rem;
+            animation: float 2s ease-in-out infinite;
+        }
+
+        .scroll-hint-arrow {
+            display: inline-block;
+            margin-top: 0.25rem;
+            animation: bounce 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes float {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #90cdf4; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* === Footer === */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 1.5rem 0;
+            margin-top: 2rem;
+        }
+
+        .footer-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Sidebar -->
+    <nav class="sidebar fixed left-0 top-0 h-screen w-56 p-5 overflow-y-auto hidden lg:block">
+        <div class="sticky top-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-2 mb-8">
+                <span class="text-2xl">🐻‍❄️</span>
+                <svg viewBox="0 0 16 16" class="w-5 h-5 -ml-1" fill="none">
+                    <circle cx="6" cy="6" r="4" stroke="#0066cc" stroke-width="1.5" fill="none"/>
+                    <line x1="9.5" y1="9.5" x2="14" y2="14" stroke="#0066cc" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="6" cy="6" r="1.5" fill="#0066cc" opacity="0.3"/>
+                </svg>
+                <span class="font-['Outfit'] font-semibold text-sm text-[var(--text)]">PaperPulse</span>
+            </div>
+
+            <p class="font-['JetBrains_Mono'] text-xs text-[var(--muted)] uppercase tracking-widest mb-3">Contents</p>
+            <ul id="toc-list" class="space-y-1"></ul>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="lg:ml-56">
+        <article class="max-w-4xl mx-auto px-8 py-12 lg:py-16">
+
+            <!-- Header -->
+            <header class="mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded">PAPER</span>
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--muted)]">2026-04-15</span>
+                </div>
+            </header>
+
+            <!-- Hero -->
+            <section class="mb-6">
+                <h1 class="hero-title mb-6" id="hero-title">GEPA：不用几万次RL采样，靠“反思改提示词”也能赢，最高少用35倍rollouts</h1>
+
+                <div class="tldr-card mb-5">
+                    <p class="tldr-content" id="tldr-content">Loading...</p>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <p class="info-label">PAPER</p>
+                        <div class="info-value" id="paper-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">CODE</p>
+                        <div class="info-value" id="code-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">AUTHORS</p>
+                        <p class="info-value" id="paper-authors">-</p>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">KEYWORDS</p>
+                        <p class="info-value" id="paper-keywords">-</p>
+                    </div>
+                </div>
+
+                <div class="scroll-hint">
+                    <span>scroll down to read...</span>
+                    <span class="scroll-hint-arrow">↓</span>
+                </div>
+            </section>
+
+            <!-- Divider - 渐变边框 -->
+            <div class="divider-section">
+                <div class="divider-line"></div>
+                <span class="divider-text">DETAILED ANALYSIS</span>
+                <div class="divider-line"></div>
+            </div>
+
+            <!-- Content -->
+            <section class="prose" id="content">
+                <h1>GEPA：不用几万次RL采样，靠“反思改提示词”也能赢，最高少用35倍rollouts</h1>
+<h2>TL;DR</h2>
+<p>大模型做任务适配，常见做法是用GRPO这类强化学习，但往往要成千上万次rollouts，成本高、效率低。GEPA换了条路：不改模型权重，直接让模型读执行轨迹和评测反馈，用自然语言“复盘”，再进化提示词。结果在6个任务上平均比GRPO高6%，最高高20%，同时最多少用35倍rollouts；相比当前强基线MIPROv2，整体还能多拿超过10%的提升。</p>
+<h2>论文基本信息</h2>
+<h3>论文链接</h3>
+<p>https://arxiv.org/abs/2507.19457</p>
+<h3>代码链接</h3>
+<p>https://github.com/gepa-ai/gepa</p>
+<h3>作者团队</h3>
+<p>加州大学伯克利分校、斯坦福大学、圣母大学、Databricks、麻省理工学院<br />
+Lakshya A Agrawal, Shangyin Tan, Dilara Soylu</p>
+<h3>关键词</h3>
+<p>提示词优化、反思学习、进化搜索、帕累托前沿、强化学习替代方案、复合AI系统、样本效率</p>
+<h2>为什么作者说：语言反馈比标量奖励更“会教模型”</h2>
+<h3>1. GRPO这类RL方法，最大问题不是没效果，而是太吃采样</h3>
+<p>论文一开始瞄准的痛点非常实际：很多下游任务要靠强化学习适配，但RL通常只给一个最终分数，像老师只说“60分，下一个”。这当然能学，但学得慢。</p>
+<p>作者指出，现有GRPO类方法在实践里常常要 <strong>几万到几十万次rollouts</strong>。而现实里的AI系统并不便宜：</p>
+<ul>
+<li>可能会调检索、代码执行等外部工具</li>
+<li>可能没预算做大量采样</li>
+<li>还可能根本不能微调闭源大模型权重</li>
+</ul>
+<p>所以问题不是“RL行不行”，而是：<strong>有没有更省rollout、更适合复杂LLM系统的方法？</strong></p>
+<h3>2. 论文的核心观察：一次失败里，其实藏了远比“0/1奖励”更多的信息</h3>
+<p>作者的关键判断很有意思：LLM系统跑一次，不只是产出一个最终分数，它还会留下大量“文字痕迹”：</p>
+<ul>
+<li>prompt本身</li>
+<li>中间推理链</li>
+<li>工具调用过程</li>
+<li>工具输出</li>
+<li>评测器的报错信息，比如编译错误、rubric失败原因</li>
+</ul>
+<p>这些内容对LLM来说是可读、可理解的。<br />
+所以与其把丰富过程压缩成一个冷冰冰的标量奖励，不如让模型直接“看过程、做复盘、改提示词”。</p>
+<p>这就是GEPA的出发点：<strong>让模型在语言空间里学习，而不是只靠策略梯度吃最终分数。</strong></p>
+<h2>GEPA怎么做：像“会写总结的提示词进化器”</h2>
+<h3>1. 核心流程：执行→拿反馈→反思→改prompt→保留更优候选</h3>
+<p>GEPA全称是 <strong>Genetic-Pareto</strong>。它优化的是提示词，不改底层模型权重。</p>
+<p>每轮大致做这几步：</p>
+<ol>
+<li>从当前候选prompt池里选一个候选系统</li>
+<li>在一个小批量任务上执行，收集轨迹</li>
+<li>调用反馈函数，拿到分数和文本反馈</li>
+<li>让一个“反思LM”分析：</li>
+<li>哪个模块出了问题</li>
+<li>当前prompt哪里写得不对</li>
+<li>应该怎么改指令</li>
+<li>生成新prompt，再在小批量上复测</li>
+<li>如果更好，就加入候选池，并在验证集上打分</li>
+</ol>
+<p>可以把它理解成：<strong>不是让模型盲目试错，而是每错一次都写一份复盘，再据此修prompt。</strong></p>
+<h3>2. 它优化的不是单轮聊天，而是“复合AI系统”</h3>
+<p>这篇论文强调的对象不是单个prompt，而是 <strong>compound AI system</strong>：也就是由多个LLM模块、工具调用和控制流组成的系统。</p>
+<p>比如一个多跳问答系统，可能包含：</p>
+<ul>
+<li>第1跳检索</li>
+<li>文档摘要</li>
+<li>第2跳检索query生成</li>
+<li>最终答案生成</li>
+</ul>
+<p>GEPA会针对某个具体模块单独改prompt，而不是粗暴地整体重写。<br />
+这点很关键，因为复杂系统的错误往往是“局部模块失误拖累全局”。</p>
+<h3>3. 它不只看执行轨迹，还看“评测器的吐槽”</h3>
+<p>GEPA有个很实用的设计：把原来的评测函数 $\mu$ 扩展成反馈函数 $\mu_f$。</p>
+<p>除了分数，$\mu_f$ 还能返回文本反馈，比如：</p>
+<ul>
+<li>编译错误信息</li>
+<li>单元测试失败细节</li>
+<li>每一跳检索的评价</li>
+<li>人工标注者写的解释</li>
+</ul>
+<p>这相当于把“考了多少分”升级成“为什么扣分”。<br />
+在代码、检索、多跳推理这类任务里，这种反馈往往比单纯reward更值钱。</p>
+<h2>帕累托前沿是GEPA真正拉开差距的地方：不只追“当前第一名”</h2>
+<h3>1. 只追最好候选，很容易一头撞进局部最优</h3>
+<p>如果每次都只拿当前最优prompt继续改，看起来最合理，实际上很容易卡死。</p>
+<p>论文里专门对比了这种贪心策略。问题在于：<br />
+某个候选可能只是在一部分样本上特别强，但并不代表它是全局最优方向。一直围着它打转，就会把预算烧光。</p>
+<h3>2. GEPA的办法：保留“每道题上的赢家”，再从中抽样继续进化</h3>
+<p>GEPA使用 <strong>Pareto-based candidate selection</strong>。</p>
+<p>具体来说：</p>
+<ul>
+<li>对每个训练样本，记录当前得分最高的候选</li>
+<li>保留那些至少在一个样本上最强的候选</li>
+<li>去掉被完全支配的候选</li>
+<li>再按“它在多少个样本上领先”来加权采样</li>
+</ul>
+<p>这个思路很像创业投资：<br />
+<strong>不是把钱全押在一个最火项目上，而是保留几条已经被证明有效的路线。</strong></p>
+<h3>3. 数据上，这个设计的收益非常明显</h3>
+<p>在Qwen3 8B上，固定其他设置，只比较候选选择策略：</p>
+<ul>
+<li>Baseline：<strong>48.84</strong></li>
+<li>只选当前最佳：<strong>54.89</strong>，提升 <strong>+6.05</strong></li>
+<li>Beam Search：<strong>53.95</strong>，提升 <strong>+5.11</strong></li>
+<li>GEPA的Pareto采样：<strong>61.28</strong>，提升 <strong>+12.44</strong></li>
+</ul>
+<p>也就是说，<strong>光是“下一步改谁”这个策略，GEPA就比贪心和beam明显强一截。</strong></p>
+<h2>6个任务实测：平均比GRPO高6%，最高高20%，还省掉大量rollouts</h2>
+<h3>1. 在Qwen3 8B上，GEPA整体成绩最好</h3>
+<p>论文在6个任务上评测：HotpotQA、IFBench、HoVer、PUPA、AIME-2025、LiveBench-Math。</p>
+<p>Qwen3 8B的总成绩：</p>
+<ul>
+<li>Baseline：<strong>45.23</strong></li>
+<li>GRPO：<strong>48.91</strong></li>
+<li>MIPROv2：<strong>47.84</strong></li>
+<li>GEPA：<strong>54.85</strong></li>
+<li>GEPA+Merge：<strong>52.40</strong></li>
+</ul>
+<p>GEPA相对：</p>
+<ul>
+<li>比Baseline高 <strong>+9.62</strong></li>
+<li>比GRPO平均高约 <strong>6%</strong></li>
+<li>比MIPROv2高 <strong>7.01分</strong></li>
+</ul>
+<p>单任务里几个很亮眼的点：</p>
+<ul>
+<li><strong>HotpotQA</strong>：GEPA <strong>62.33</strong>，GRPO <strong>43.33</strong></li>
+<li><strong>IFBench</strong>：GEPA <strong>38.61</strong>，GRPO <strong>35.88</strong></li>
+<li><strong>PUPA</strong>：GEPA <strong>91.85</strong>，GRPO <strong>86.66</strong></li>
+<li><strong>HoVer</strong>：GEPA <strong>52.33</strong>，GRPO <strong>38.67</strong></li>
+</ul>
+<h3>2. 更狠的是采样效率：最多少用35倍rollouts</h3>
+<p>GRPO在表里的预算统一是 <strong>24,000 rollouts</strong>。<br />
+而GEPA达到最好效果时，各任务只用了：</p>
+<ul>
+<li>HotpotQA：<strong>6871</strong></li>
+<li>IFBench：<strong>3593</strong></li>
+<li>HoVer：<strong>7051</strong></li>
+<li>PUPA：<strong>2426</strong></li>
+<li>AIME-2025：<strong>1839</strong></li>
+<li>LiveBench-Math：<strong>1839</strong></li>
+</ul>
+<p>作者总结是：</p>
+<ul>
+<li><strong>最多35×更少rollouts</strong></li>
+<li>GEPA在6个任务中平均比GRPO高 <strong>+6%</strong></li>
+<li>最多能高 <strong>20%</strong></li>
+</ul>
+<p>更夸张的是，如果只看训练集rollouts、不把大量验证开销算进去，GEPA达到最优性能只需要 <strong>79到737次</strong>。</p>
+<h3>3. 在GPT-4.1 Mini上，GEPA同样压过一票prompt优化方法</h3>
+<p>GPT-4.1 Mini上的总成绩：</p>
+<ul>
+<li>Baseline：<strong>53.03</strong></li>
+<li>Trace (OptoPrime)：<strong>56.30</strong></li>
+<li>MIPROv2-No-Demos：<strong>57.14</strong></li>
+<li>MIPROv2：<strong>58.67</strong></li>
+<li>TextGrad：<strong>59.14</strong></li>
+<li>GEPA：<strong>65.22</strong></li>
+<li>GEPA+Merge：<strong>66.36</strong></li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>GEPA比MIPROv2高 <strong>+6.55</strong></li>
+<li>GEPA+Merge比MIPROv2高 <strong>+7.69</strong></li>
+<li>相对baseline总提升达到 <strong>+12.19</strong> 和 <strong>+13.33</strong></li>
+</ul>
+<p>这说明GEPA不是只对开源模型有效，<strong>闭源模型也能直接吃到这套prompt进化红利。</strong></p>
+<h2>两个特别有意思的发现：prompt更短，还能跨模型迁移</h2>
+<h3>1. 它生成的prompt，不是更花哨，而是更“像规则手册”</h3>
+<p>论文给了一个很典型的HotpotQA例子。</p>
+<p>种子prompt只有一句话：</p>
+<blockquote>
+<p>给定question和summary_1，生成query。</p>
+</blockquote>
+<p>而GEPA优化后的prompt，会明确写出：</p>
+<ul>
+<li>第二跳检索的目标是什么</li>
+<li>不要复述原问题</li>
+<li>应该找“第一跳没覆盖但逻辑相关”的实体</li>
+<li>什么时候该从“具体实体”扩展到“更高层级概念”</li>
+<li>输出query要短、准、适合检索</li>
+</ul>
+<p>这种prompt像什么？<br />
+像一个刚入职的检索工程师，终于拿到了一份靠谱的SOP，而不是一句“你自己看着办”。</p>
+<h3>2. 反而比few-shot优化更短，最高短9.2倍</h3>
+<p>作者特别比较了GEPA和MIPROv2的prompt长度，发现：</p>
+<ul>
+<li><strong>GEPA / GEPA+Merge 生成的prompt最多可比MIPROv2短 9.2×</strong></li>
+</ul>
+<p>这点很重要。因为很多few-shot优化方法虽然有效，但会把prompt堆得很长，代价就是：</p>
+<ul>
+<li>token成本更高</li>
+<li>延迟更长</li>
+<li>系统吞吐更差</li>
+</ul>
+<p>而GEPA的结果说明：<strong>更强的任务规则，不一定要靠塞更多例子。</strong></p>
+<h3>3. 用Qwen3 8B优化出来的prompt，拿去给GPT-4.1 Mini也好使</h3>
+<p>论文还测了跨模型迁移：</p>
+<ul>
+<li>用 <strong>Qwen3 8B</strong> 完整优化prompt</li>
+<li>不做修改，直接在 <strong>GPT-4.1 Mini</strong> 上评估</li>
+</ul>
+<p>结果总分达到 <strong>62.03</strong>，相对baseline提升 <strong>+9.00</strong></p>
+<p>而且这个跨模型迁移结果，居然还超过了那些<strong>直接在GPT-4.1 Mini上优化</strong>的基线：</p>
+<ul>
+<li>MIPROv2：<strong>+5.64</strong></li>
+<li>TextGrad：<strong>+6.11</strong></li>
+<li>Trace：<strong>+3.27</strong></li>
+</ul>
+<p>这说明GEPA学到的并不只是“某个模型的小习惯”，而是相当一部分<strong>可迁移的任务策略</strong>。</p>
+<h2>不只是训练优化：它还把代码生成和对抗提示词玩出了新花样</h2>
+<h3>1. 代码优化：在NPUEval上，平均向量利用率从4.25%拉到30.52%</h3>
+<p>论文还把GEPA当成一种 <strong>inference-time search</strong> 工具来用，做代码优化。</p>
+<p>在AMD NPU内核生成任务上，用GPT-4o：</p>
+<ul>
+<li>Sequential10：<strong>4.25%</strong></li>
+<li>+RAG：<strong>16.33%</strong></li>
+<li>+RAG+MIPROv2：<strong>19.03%</strong></li>
+<li>GEPA Best-1：<strong>26.85%</strong></li>
+<li>GEPA Pareto：<strong>30.52%</strong></li>
+</ul>
+<p>而且有些kernel的向量利用率能到 <strong>70%</strong>。<br />
+这里GEPA的妙处在于：它能把编译错误、profiling结果、技术手册检索内容，一起变成下一轮prompt进化的素材。</p>
+<h3>2. 对抗提示词搜索：把AIME pass@1从76%打到10%</h3>
+<p>更离谱的是对抗prompt搜索。</p>
+<p>作者让GEPA反过来优化：不是让模型答得更好，而是设计“看起来没改任务、但会严重干扰模型”的提示词。</p>
+<p>在AIME-2025上，用GPT-5 Mini：</p>
+<ul>
+<li>干净prompt：<strong>76%</strong></li>
+<li>GEPA生成的对抗prompt：<strong>10%</strong></li>
+</ul>
+<p>这种对抗prompt没有直接改题意，只是插入一些无关 trivia，再保留严格格式要求。结果模型大量输出字面上的 <code>### &lt;final answer&gt;</code> 占位符，说明它在“额外干扰信息 + 严格格式指令”的组合下出现了系统性误解。</p>
+<p>这部分很像自动化红队：<strong>GEPA不只会帮你把系统调强，也会帮你测出系统最脆的地方。</strong></p>
+<h2>总结：GEPA为什么值得关注</h2>
+<h3>1. 这篇论文最重要的结论</h3>
+<p>GEPA传达的核心信息很明确：</p>
+<ul>
+<li>对很多LLM系统来说，<strong>自然语言反思</strong>可以比RL的标量奖励更高效</li>
+<li><strong>不改权重，只改prompt</strong>，也能在复杂任务上打赢GRPO</li>
+<li>真正拉开差距的，不只是“会反思”，还有 <strong>Pareto前沿保持多样性</strong></li>
+</ul>
+<h3>2. 它最适合什么场景</h3>
+<p>如果你的场景符合下面几条，GEPA会特别有吸引力：</p>
+<ul>
+<li>rollout很贵</li>
+<li>系统有多个模块</li>
+<li>有工具调用、检索、代码执行</li>
+<li>能拿到文本化反馈，比如报错、rubric、人工评语</li>
+<li>模型权重不能或不方便微调</li>
+</ul>
+<h3>3. 它的边界也很诚实</h3>
+<p>论文也没有把GEPA吹成银弹：</p>
+<ul>
+<li>在 <strong>AIME</strong> 上没赢GRPO</li>
+<li><strong>GEPA+Merge</strong> 在Qwen3 8B上并不总是稳定增益</li>
+<li>当前不少预算花在验证集候选筛选上，未来还可以继续压缩</li>
+</ul>
+<p>但整体看，这篇工作已经把一个很强的观点落地成了结果：<br />
+<strong>当大模型本身就擅长读语言、写规则、做反思时，也许最该优化的，不一定是权重，而是让它更好地“读懂自己的失败”。</strong></p>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p class="footer-text">Generated by PaperPulse Lite</p>
+            </footer>
+
+        </article>
+    </main>
+
+    <script>
+        const content = document.getElementById('content');
+        const html = content.innerHTML;
+
+        // === 隐藏content中重复的h1标题 ===
+        const firstH1 = content.querySelector('h1');
+        if (firstH1) {
+            firstH1.style.display = 'none';
+        }
+
+        // === TL;DR - 找h2后面的所有内容，拼接后提取 ===
+        const tldrH2 = content.querySelector('h2');
+        if (tldrH2 && tldrH2.textContent.toLowerCase().includes('tl;dr')) {
+            // 收集h2后面所有p的内容，跳过h3标题本身
+            let tldrText = '';
+            let nextEl = tldrH2.nextElementSibling;
+            while (nextEl && nextEl.tagName !== 'H2') {
+                if (nextEl.tagName === 'P') {
+                    tldrText += nextEl.textContent.trim() + ' ';
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            if (tldrText) {
+                document.getElementById('tldr-content').textContent = tldrText.trim().substring(0, 350);
+            }
+        }
+
+        // === 提取论文基本信息（并隐藏该章节）===
+        const headings = content.querySelectorAll('h2');
+        let infoH2 = null;
+        headings.forEach(h => {
+            if (h.textContent.includes('论文基本信息') || h.textContent.includes('论文链接') || h.textContent.toLowerCase().includes('info')) {
+                infoH2 = h;
+            }
+        });
+
+        if (infoH2) {
+            // 隐藏整个"论文基本信息"章节
+            let current = infoH2.nextElementSibling;
+            while (current && current.tagName !== 'H2') {
+                current.style.display = 'none';
+                current = current.nextElementSibling;
+            }
+
+            // === PAPER / CODE: 区分论文链接和代码链接 ===
+            const paperLinksContainer = document.getElementById('paper-links');
+            const codeLinksContainer = document.getElementById('code-links');
+            let paperHtml = '';
+            let codeHtml = '';
+
+            // 先按h3区分
+            const codeH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('代码'));
+            const paperH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('论文链接'));
+
+            if (paperH3) {
+                let el = paperH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    // 也检查纯文本URL
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => paperHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            if (codeH3) {
+                let el = codeH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => codeHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            // 如果没有分h3，则按URL特征自动分类
+            if (!paperHtml && !codeHtml) {
+                const allLinks = content.querySelectorAll('a');
+                allLinks.forEach(a => {
+                    const url = a.getAttribute('href') || '';
+                    const label = a.textContent.trim();
+                    if (url.startsWith('http')) {
+                        if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('huggingface.co')) {
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        } else {
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    }
+                });
+            }
+
+            if (paperHtml) paperLinksContainer.innerHTML = paperHtml;
+            if (codeHtml) codeLinksContainer.innerHTML = codeHtml;
+
+            // === AUTHORS: 机构+前3作者 ===
+            const authorH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('作者'));
+            const authorContainer = document.getElementById('paper-authors');
+            if (authorH) {
+                const nextEl = authorH.nextElementSibling;
+                if (nextEl) {
+                    const authorLis = nextEl.querySelectorAll('li');
+                    if (authorLis.length > 0) {
+                        const authors = Array.from(authorLis).map(li => li.textContent.trim()).slice(0, 3);
+                        authorContainer.textContent = authors.join(', ');
+                    } else {
+                        // 纯文本：提取机构行和前3个作者
+                        const rawText = nextEl.textContent.trim();
+                        const parts = rawText.split(/[,，;；\n]/);
+                        const top3 = parts.slice(0, 3).join(', ');
+                        authorContainer.textContent = top3;
+                    }
+                }
+            }
+
+            // === KEYWORDS ===
+            const keywordH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('关键词'));
+            const keywordContainer = document.getElementById('paper-keywords');
+            if (keywordH) {
+                const nextEl = keywordH.nextElementSibling;
+                if (nextEl) {
+                    const keywordLis = nextEl.querySelectorAll('li');
+                    let fullKeywords = '';
+                    if (keywordLis.length > 0) {
+                        fullKeywords = Array.from(keywordLis).map(li => li.textContent.trim()).join(', ');
+                    } else {
+                        fullKeywords = nextEl.textContent.trim();
+                    }
+                    keywordContainer.textContent = fullKeywords;
+                }
+            }
+        }
+
+        // === TOC ===
+        const tocList = document.getElementById('toc-list');
+
+        // Brief 条目 - 指向顶部hero区域
+        const heroSection = document.querySelector('section.mb-6');
+        if (heroSection) {
+            heroSection.id = 'brief';
+            const briefLi = document.createElement('li');
+            const briefA = document.createElement('a');
+            briefA.href = '#brief';
+            briefA.textContent = 'Brief';
+            briefA.className = 'toc-link';
+            briefLi.appendChild(briefA);
+            tocList.appendChild(briefLi);
+        }
+
+        const allHeadings = content.querySelectorAll('h2, h3');
+        const exclude = ['tl;dr', '论文基本信息', '论文链接'];
+
+        allHeadings.forEach((h, i) => {
+            const text = h.textContent.toLowerCase();
+            if (exclude.some(e => text.includes(e.toLowerCase()))) {
+                h.style.display = 'none';
+                let current = h.nextElementSibling;
+                while (current && current.tagName !== 'H2') {
+                    current.style.display = 'none';
+                    current = current.nextElementSibling;
+                }
+                return;
+            }
+
+            const id = `s-${i}`;
+            h.id = id;
+
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `#${id}`;
+            a.textContent = h.textContent;
+            a.className = `toc-link ${h.tagName === 'H3' ? 'h3' : ''}`;
+            li.appendChild(a);
+            tocList.appendChild(li);
+        });
+
+        // === Scroll Highlight ===
+        const tocLinks = tocList.querySelectorAll('.toc-link');
+        const highlight = () => {
+            let current = null;
+            // Brief高亮：当滚动在顶部时
+            if (heroSection && heroSection.getBoundingClientRect().top > -50) {
+                current = 'brief';
+            }
+            allHeadings.forEach(h => {
+                if (h.id && h.getBoundingClientRect().top <= 100) current = h.id;
+            });
+            tocLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${current}`);
+            });
+        };
+        window.addEventListener('scroll', highlight, { passive: true });
+        highlight();
+    </script>
+</body>
+</html>

@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ACE：别再把提示词越改越短了，这篇论文让上下文像“作战手册”一样越用越强</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f0f7ff;
+            --card-bg: #ffffff;
+            --text: #1e3a5f;
+            --muted: #5a7a9a;
+            --accent: #0066cc;
+            --accent-light: #3399ff;
+            --accent-soft: #cce5ff;
+            --border: #d0e4f7;
+        }
+
+        body {
+            font-family: 'Source Serif 4', Georgia, serif;
+            background: linear-gradient(180deg, var(--bg) 0%, #e8f4ff 100%);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* === Hero Title === */
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.125rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.35;
+            color: var(--text);
+            background: linear-gradient(135deg, var(--text) 0%, #2d5a87 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* === TL;DR Card === */
+        .tldr-card {
+            background: linear-gradient(135deg, #e6f3ff 0%, #f5faff 50%, #cce8ff 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            box-shadow: 0 2px 12px rgba(0, 102, 204, 0.08);
+        }
+
+        .tldr-card::before {
+            content: 'TL;DR';
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            position: absolute;
+            top: 0.875rem;
+            left: 1.5rem;
+            background: rgba(255,255,255,0.8);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .tldr-content {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text);
+            padding-top: 0.75rem;
+        }
+
+        /* === Info Grid === */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            min-width: 0;
+            box-sizing: border-box;
+            transition: max-height 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            max-height: 78px;
+            overflow: hidden;
+        }
+
+        .info-item:hover {
+            border-color: var(--accent-soft);
+            box-shadow: 0 4px 16px rgba(0, 102, 204, 0.12);
+            z-index: 10;
+            max-height: 300px;
+        }
+
+        .info-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.375rem;
+        }
+
+        .info-value {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.4;
+            max-width: 100%;
+            word-break: break-word;
+        }
+
+        .info-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: block;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .info-link:hover {
+            text-decoration: underline;
+        }
+
+        /* === Divider - 渐变边框 === */
+        .divider-section {
+            margin: 3rem 0 2rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .divider-line {
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent-light) 70%, transparent 100%);
+            border-radius: 1px;
+        }
+
+        .divider-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            animation: breathe 3s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.35; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        /* === Prose === */
+        .prose h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.875rem;
+            color: var(--accent);
+            padding-bottom: 0.375rem;
+            border-bottom: 1px solid var(--accent-soft);
+        }
+
+        .prose h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.625rem;
+            color: var(--accent-light);
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .prose ul, .prose ol {
+            margin-bottom: 1rem;
+            padding-left: 1.25rem;
+        }
+
+        .prose li {
+            margin-bottom: 0.5rem;
+            line-height: 1.65;
+        }
+
+        .prose li::marker {
+            color: var(--accent);
+        }
+
+        .prose blockquote {
+            background: rgba(0, 102, 204, 0.06);
+            border-left: 2px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            border-radius: 0 6px 6px 0;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .prose code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .prose pre {
+            font-family: 'JetBrains Mono', monospace;
+            background: #1a365d;
+            color: #bee3f8;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .prose pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .prose strong {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .prose a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent);
+        }
+
+        .prose a:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+
+        /* === Sidebar === */
+        .sidebar {
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+        }
+
+        .toc-link {
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+            transition: all 0.15s ease;
+        }
+
+        .toc-link:hover {
+            color: var(--accent);
+            background: rgba(0, 102, 204, 0.06);
+        }
+
+        .toc-link.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-soft);
+            font-weight: 600;
+        }
+
+        .toc-link.h3 {
+            font-size: 0.75rem;
+            padding-left: 1.25rem;
+            font-weight: 400;
+        }
+
+        /* === Scroll Hint === */
+        .scroll-hint {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-align: center;
+            margin-top: 2rem;
+            animation: float 2s ease-in-out infinite;
+        }
+
+        .scroll-hint-arrow {
+            display: inline-block;
+            margin-top: 0.25rem;
+            animation: bounce 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes float {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #90cdf4; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* === Footer === */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 1.5rem 0;
+            margin-top: 2rem;
+        }
+
+        .footer-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Sidebar -->
+    <nav class="sidebar fixed left-0 top-0 h-screen w-56 p-5 overflow-y-auto hidden lg:block">
+        <div class="sticky top-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-2 mb-8">
+                <span class="text-2xl">🐻‍❄️</span>
+                <svg viewBox="0 0 16 16" class="w-5 h-5 -ml-1" fill="none">
+                    <circle cx="6" cy="6" r="4" stroke="#0066cc" stroke-width="1.5" fill="none"/>
+                    <line x1="9.5" y1="9.5" x2="14" y2="14" stroke="#0066cc" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="6" cy="6" r="1.5" fill="#0066cc" opacity="0.3"/>
+                </svg>
+                <span class="font-['Outfit'] font-semibold text-sm text-[var(--text)]">PaperPulse</span>
+            </div>
+
+            <p class="font-['JetBrains_Mono'] text-xs text-[var(--muted)] uppercase tracking-widest mb-3">Contents</p>
+            <ul id="toc-list" class="space-y-1"></ul>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="lg:ml-56">
+        <article class="max-w-4xl mx-auto px-8 py-12 lg:py-16">
+
+            <!-- Header -->
+            <header class="mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded">PAPER</span>
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--muted)]">2026-04-15</span>
+                </div>
+            </header>
+
+            <!-- Hero -->
+            <section class="mb-6">
+                <h1 class="hero-title mb-6" id="hero-title">ACE：别再把提示词越改越短了，这篇论文让上下文像“作战手册”一样越用越强</h1>
+
+                <div class="tldr-card mb-5">
+                    <p class="tldr-content" id="tldr-content">Loading...</p>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <p class="info-label">PAPER</p>
+                        <div class="info-value" id="paper-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">CODE</p>
+                        <div class="info-value" id="code-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">AUTHORS</p>
+                        <p class="info-value" id="paper-authors">-</p>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">KEYWORDS</p>
+                        <p class="info-value" id="paper-keywords">-</p>
+                    </div>
+                </div>
+
+                <div class="scroll-hint">
+                    <span>scroll down to read...</span>
+                    <span class="scroll-hint-arrow">↓</span>
+                </div>
+            </section>
+
+            <!-- Divider - 渐变边框 -->
+            <div class="divider-section">
+                <div class="divider-line"></div>
+                <span class="divider-text">DETAILED ANALYSIS</span>
+                <div class="divider-line"></div>
+            </div>
+
+            <!-- Content -->
+            <section class="prose" id="content">
+                <h1>ACE：别再把提示词越改越短了，这篇论文让上下文像“作战手册”一样越用越强</h1>
+<h2>TL;DR</h2>
+<p>很多上下文优化方法都有两个老毛病：一是<strong>越改越短</strong>，把关键领域经验压缩没了；二是<strong>越改越塌</strong>，一次重写就把几万 token 的知识缩水成几句话。Stanford、SambaNova 和伯克利提出的 ACE，把上下文当成持续生长的“作战手册”，通过生成、反思、整理三步持续增量更新。结果上，ACE 在 agent 任务平均提升 <strong>10.6%</strong>，金融任务提升 <strong>8.6%</strong>，适配延迟平均降低 <strong>86.9%</strong>，还能只靠执行反馈自我改进。</p>
+<h2>论文基本信息</h2>
+<h3>论文链接</h3>
+<ul>
+<li>arXiv: https://arxiv.org/abs/2510.04618</li>
+</ul>
+<h3>代码链接</h3>
+<ul>
+<li>GitHub: https://github.com/ace-agent/ace</li>
+<li>项目主页: https://ace-agent.github.io</li>
+</ul>
+<h3>作者团队</h3>
+<ul>
+<li>斯坦福大学、SambaNova Systems、加州大学伯克利分校  </li>
+<li>Qizheng Zhang, Changran Hu, Shubhangi Upasani</li>
+</ul>
+<h3>关键词</h3>
+<ul>
+<li>上下文工程</li>
+<li>大语言模型智能体</li>
+<li>自我改进</li>
+<li>长上下文</li>
+<li>反思学习</li>
+<li>增量记忆</li>
+</ul>
+<h2>为什么现有方法会“越优化越笨”：短小偏见和上下文坍塌</h2>
+<h3>1. 论文先点名两个核心问题</h3>
+<p>作者认为，很多 LLM 应用现在不一定靠微调权重，而是靠改上下文：系统提示词、记忆、检索证据、策略说明等。但现有方法有两个明显缺陷：</p>
+<ol>
+<li>
+<p><strong>brevity bias（短小偏见）</strong><br />
+   方法喜欢把提示词优化成简短、通用的版本，看起来更“优雅”，但会丢掉真正有用的领域细节，比如工具使用诀窍、常见坑、任务特定启发式。</p>
+</li>
+<li>
+<p><strong>context collapse（上下文坍塌）</strong><br />
+   如果每轮都让模型“整段重写”已有上下文，最后常会越写越短、越写越空，像把一本操作手册不断总结成一句口号。</p>
+</li>
+</ol>
+<h3>2. 这个“坍塌”有多严重？</h3>
+<p>论文在 AppWorld 上给了一个很直观的例子：</p>
+<ul>
+<li>第 60 步时，上下文长度还有 <strong>18,282 tokens</strong></li>
+<li>对应准确率 <strong>66.7%</strong></li>
+<li>下一步重写后，直接塌成 <strong>122 tokens</strong></li>
+<li>准确率跌到 <strong>57.1%</strong></li>
+<li>甚至还不如<strong>没有上下文适配</strong>时的 <strong>63.7%</strong></li>
+</ul>
+<p>这个现象很像你把团队经验文档交给一个实习生反复“帮忙精简”，最后只剩一句：<strong>“注意质量、认真执行。”</strong> 听起来没错，但几乎没法用。</p>
+<h2>ACE 怎么做：把上下文从“一整段提示词”改成“持续进化的作战手册”</h2>
+<h3>1. 三个角色分工，不让一个模型包办所有事</h3>
+<p>ACE 的核心思路很简单：<strong>别再让模型一次性重写整份上下文，而是把上下文拆成结构化条目，像维护 wiki 或作战手册一样慢慢长。</strong></p>
+<p>它有三个模块：</p>
+<ul>
+<li><strong>Generator</strong>：先去做题、跑轨迹、调用工具，产生推理过程</li>
+<li><strong>Reflector</strong>：分析哪些地方做对了、哪些地方翻车了，提炼经验</li>
+<li><strong>Curator</strong>：把经验整理成小的上下文增量，再并入已有上下文</li>
+</ul>
+<p>这其实是在模拟一个靠谱团队的工作流：<br />
+先实战，再复盘，最后沉淀 SOP。</p>
+<h3>2. “增量更新”是 ACE 的关键</h3>
+<p>ACE 不把上下文当成一整块大 prompt，而是拆成一个个 <strong>bullet 条目</strong>。每个条目包含：</p>
+<ul>
+<li>一个唯一 ID</li>
+<li>有帮助/有害的计数</li>
+<li>具体内容，比如某条策略、某个金融概念、某类常见错误</li>
+</ul>
+<p>新任务来了，模型会标记哪些条目有用、哪些误导，然后 Reflector 提出修订建议，Curator 只更新相关条目。</p>
+<p>这带来三个好处：</p>
+<ul>
+<li><strong>局部修改</strong>：只改相关知识，不动整本“手册”</li>
+<li><strong>细粒度检索</strong>：只拿最相关的条目给模型看</li>
+<li><strong>持续积累</strong>：新经验可以不断追加，不会一把梭全重写</li>
+</ul>
+<h3>3. Grow-and-Refine：不是无脑变长，而是边长边整理</h3>
+<p>ACE 不是一味堆 token。它有个机制叫 <strong>grow-and-refine</strong>：</p>
+<ul>
+<li>新经验先加进去</li>
+<li>已有条目按反馈更新</li>
+<li>再做去重和冗余清理</li>
+<li>可以每次都整理，也可以等快超上下文窗口时再整理</li>
+</ul>
+<p>所以 ACE 的目标不是“更短”，也不是“更长”，而是<strong>更完整、更有组织、还能持续维护</strong>。</p>
+<h2>在 AppWorld 上，ACE 用开源模型追平榜首商业系统</h2>
+<h3>1. 离线适配：平均分从 42.4% 拉到 59.4%</h3>
+<p>在 AppWorld agent 基准上，基础模型 DeepSeek-V3.1 + ReAct 的平均成绩是 <strong>42.4%</strong>。</p>
+<p>离线适配后：</p>
+<ul>
+<li><strong>ReAct + ICL</strong>：<strong>46.0%</strong></li>
+<li><strong>ReAct + GEPA</strong>：<strong>46.4%</strong></li>
+<li><strong>ReAct + ACE</strong>：<strong>59.4%</strong></li>
+</ul>
+<p>也就是说，ACE 相比：</p>
+<ul>
+<li>ICL 高 <strong>13.4 个点</strong></li>
+<li>GEPA 高 <strong>13.0 个点</strong></li>
+<li>比基线高 <strong>17.0 个点</strong></li>
+</ul>
+<p>论文正文总结为：ACE 在 agent 任务上相对强基线平均提升 <strong>10.6%</strong>。</p>
+<h3>2. 没有标注也能学：只靠执行反馈，依然提升 14.8%</h3>
+<p>更有意思的是，ACE 不一定需要 ground-truth label。</p>
+<p>在<strong>没有 GT labels</strong> 的情况下：</p>
+<ul>
+<li><strong>ReAct 基线</strong>：<strong>42.4%</strong></li>
+<li><strong>ReAct + ACE</strong>：<strong>57.2%</strong></li>
+</ul>
+<p>提升了 <strong>14.8%</strong></p>
+<p>原因是 agent 场景自带“天然反馈”：</p>
+<ul>
+<li>代码执行成功没</li>
+<li>API 调用对没</li>
+<li>任务目标完成没</li>
+</ul>
+<p>这些信号就够 Reflector 做复盘了。这一点很重要：说明 ACE 更像一种<strong>自我改进框架</strong>，而不是只能靠标注数据喂出来的 prompt optimizer。</p>
+<h3>3. 在线适配更猛：挑战集上超过榜首 GPT-4.1 系统</h3>
+<p>在线设置下：</p>
+<ul>
+<li><strong>ReAct + DC</strong>：<strong>51.9%</strong></li>
+<li><strong>ReAct + ACE</strong>：<strong>59.5%</strong></li>
+</ul>
+<p>比 DC 高 <strong>7.6 个点</strong>，比基线高 <strong>17.1 个点</strong>。</p>
+<p>更亮眼的是 leaderboard 结果：</p>
+<ul>
+<li><strong>IBM CUGA（GPT-4.1）</strong> 平均 <strong>60.3%</strong></li>
+<li><strong>ReAct + ACE（DeepSeek-V3.1）</strong> 平均 <strong>59.4%</strong></li>
+</ul>
+<p>平均分基本追平。<br />
+在更难的 <strong>test-challenge</strong> 上，ACE 甚至超过对方：</p>
+<ul>
+<li><strong>TGC 高 8.4%</strong></li>
+<li><strong>SGC 高 0.7%</strong></li>
+</ul>
+<p>这相当于用一个更小的开源模型，靠更好的上下文工程，把 production 级商业 agent 打到了同一档。</p>
+<h2>在金融任务上，ACE 把“领域知识”优势打得更明显</h2>
+<h3>1. 金融信息抽取和公式推理都涨，尤其是 Formula</h3>
+<p>论文测了两个金融基准：</p>
+<ul>
+<li><strong>FiNER</strong>：金融文档细粒度实体识别，139 类标签</li>
+<li><strong>Formula</strong>：从 XBRL 财报中抽值并做数值推理</li>
+</ul>
+<p>基础模型成绩：</p>
+<ul>
+<li><strong>FiNER</strong>：<strong>70.7%</strong></li>
+<li><strong>Formula</strong>：<strong>67.5%</strong></li>
+</ul>
+<p>离线适配、有 GT labels 时：</p>
+<ul>
+<li><strong>ICL</strong>：平均 <strong>69.6%</strong></li>
+<li><strong>MIPROv2</strong>：平均 <strong>70.9%</strong></li>
+<li><strong>GEPA</strong>：平均 <strong>72.5%</strong></li>
+<li><strong>ACE</strong>：平均 <strong>81.9%</strong></li>
+</ul>
+<p>ACE 比 GEPA 高 <strong>9.4 个点</strong>，比基线高 <strong>12.8 个点</strong>。</p>
+<p>其中最夸张的是 Formula：</p>
+<ul>
+<li>基线 <strong>67.5%</strong></li>
+<li>GEPA <strong>71.5%</strong></li>
+<li><strong>ACE 85.5%</strong></li>
+</ul>
+<p>直接比基线高 <strong>18.0 个点</strong>。</p>
+<p>这说明在需要精确领域知识、规则和术语的任务里，<strong>“详细作战手册”确实比“简短万能提示词”更有效</strong>。</p>
+<h3>2. 但论文也很诚实：没有可靠反馈时，在线适配会翻车</h3>
+<p>这篇论文一个优点是没把方法吹成万能。</p>
+<p>在金融任务的<strong>无标签在线适配</strong>里，ACE 和 DC 都可能退化：</p>
+<ul>
+<li><strong>DC (CU)</strong> 平均从基线 <strong>69.1%</strong> 掉到 <strong>65.4%</strong></li>
+<li><strong>ACE</strong> 平均 <strong>72.9%</strong>，虽然整体还高于基线，但在 <strong>FiNER</strong> 上掉到 <strong>67.3%</strong>，低于基线 <strong>70.7%</strong></li>
+</ul>
+<p>作者解释得很清楚：<br />
+如果没有可靠反馈，Reflector 和 Curator 就可能把错误经验写进上下文，导致“知识污染”。</p>
+<p>所以 ACE 不是“无监督万能学习器”，它更依赖<strong>高质量反馈信号</strong>。Agent 场景因为有执行结果，通常更适合它。</p>
+<h2>不只是效果更好，ACE 还明显更省时间和钱</h2>
+<h3>1. 离线适配比 GEPA 快很多</h3>
+<p>在 AppWorld 离线适配上：</p>
+<ul>
+<li><strong>GEPA 延迟</strong>：<strong>53,898 秒</strong></li>
+<li><strong>ACE 延迟</strong>：<strong>9,517 秒</strong></li>
+</ul>
+<p>下降 <strong>82.3%</strong></p>
+<p>同时 rollout 数量：</p>
+<ul>
+<li><strong>GEPA</strong>：<strong>1434</strong></li>
+<li><strong>ACE</strong>：<strong>357</strong></li>
+</ul>
+<p>减少 <strong>75.1%</strong></p>
+<h3>2. 在线适配比 Dynamic Cheatsheet 便宜很多</h3>
+<p>在 FiNER 在线适配上：</p>
+<ul>
+<li><strong>DC 延迟</strong>：<strong>65,104 秒</strong></li>
+<li><strong>ACE 延迟</strong>：<strong>5,503 秒</strong></li>
+<li>降低 <strong>91.5%</strong></li>
+</ul>
+<p>token 成本：</p>
+<ul>
+<li><strong>DC</strong>：<strong>17.7 美元</strong></li>
+<li><strong>ACE</strong>：<strong>2.9 美元</strong></li>
+<li>降低 <strong>83.6%</strong></li>
+</ul>
+<p>论文总体总结是：ACE 的适配延迟平均降低 <strong>86.9%</strong>。</p>
+<p>原因也不复杂：<br />
+ACE 只做<strong>小块增量更新</strong>，而不是每轮都让 LLM 重写整份大上下文，所以 rollout 少、token 花费也少。</p>
+<h2>这篇论文最值得记住的，不是一个新框架名字，而是一个方向判断</h2>
+<h3>1. 作者的核心判断：对 LLM 来说，详细上下文未必是坏事</h3>
+<p>过去很多工作默认“提示词越精炼越高级”。但这篇论文反过来说：</p>
+<blockquote>
+<p>对人类来说，摘要可能更好；<br />
+对 LLM 来说，<strong>详细、完整、可组织的上下文</strong>往往更有用。</p>
+</blockquote>
+<p>因为模型可以自己从长上下文里挑重点，但如果你提前把经验压缩掉了，那就再也捞不回来了。</p>
+<h3>2. 这篇论文的主要贡献，可以浓缩成三句话</h3>
+<ol>
+<li><strong>指出了上下文优化里的两个常被忽视的问题</strong>：短小偏见、上下文坍塌  </li>
+<li><strong>提出 ACE</strong>：把上下文当成可持续进化的 playbook，而不是单段 prompt  </li>
+<li><strong>证明了这条路不仅更准，还更便宜</strong>：agent 和金融任务都有效，尤其适合有执行反馈的自我改进系统</li>
+</ol>
+<h3>3. 一句话总结</h3>
+<p>ACE 其实是在提醒我们：<br />
+<strong>LLM 的“学习”未必都要写进参数，也可以写进一份越来越成熟的上下文手册里。</strong></p>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p class="footer-text">Generated by PaperPulse Lite</p>
+            </footer>
+
+        </article>
+    </main>
+
+    <script>
+        const content = document.getElementById('content');
+        const html = content.innerHTML;
+
+        // === 隐藏content中重复的h1标题 ===
+        const firstH1 = content.querySelector('h1');
+        if (firstH1) {
+            firstH1.style.display = 'none';
+        }
+
+        // === TL;DR - 找h2后面的所有内容，拼接后提取 ===
+        const tldrH2 = content.querySelector('h2');
+        if (tldrH2 && tldrH2.textContent.toLowerCase().includes('tl;dr')) {
+            // 收集h2后面所有p的内容，跳过h3标题本身
+            let tldrText = '';
+            let nextEl = tldrH2.nextElementSibling;
+            while (nextEl && nextEl.tagName !== 'H2') {
+                if (nextEl.tagName === 'P') {
+                    tldrText += nextEl.textContent.trim() + ' ';
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            if (tldrText) {
+                document.getElementById('tldr-content').textContent = tldrText.trim().substring(0, 350);
+            }
+        }
+
+        // === 提取论文基本信息（并隐藏该章节）===
+        const headings = content.querySelectorAll('h2');
+        let infoH2 = null;
+        headings.forEach(h => {
+            if (h.textContent.includes('论文基本信息') || h.textContent.includes('论文链接') || h.textContent.toLowerCase().includes('info')) {
+                infoH2 = h;
+            }
+        });
+
+        if (infoH2) {
+            // 隐藏整个"论文基本信息"章节
+            let current = infoH2.nextElementSibling;
+            while (current && current.tagName !== 'H2') {
+                current.style.display = 'none';
+                current = current.nextElementSibling;
+            }
+
+            // === PAPER / CODE: 区分论文链接和代码链接 ===
+            const paperLinksContainer = document.getElementById('paper-links');
+            const codeLinksContainer = document.getElementById('code-links');
+            let paperHtml = '';
+            let codeHtml = '';
+
+            // 先按h3区分
+            const codeH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('代码'));
+            const paperH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('论文链接'));
+
+            if (paperH3) {
+                let el = paperH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    // 也检查纯文本URL
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => paperHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            if (codeH3) {
+                let el = codeH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => codeHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            // 如果没有分h3，则按URL特征自动分类
+            if (!paperHtml && !codeHtml) {
+                const allLinks = content.querySelectorAll('a');
+                allLinks.forEach(a => {
+                    const url = a.getAttribute('href') || '';
+                    const label = a.textContent.trim();
+                    if (url.startsWith('http')) {
+                        if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('huggingface.co')) {
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        } else {
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    }
+                });
+            }
+
+            if (paperHtml) paperLinksContainer.innerHTML = paperHtml;
+            if (codeHtml) codeLinksContainer.innerHTML = codeHtml;
+
+            // === AUTHORS: 机构+前3作者 ===
+            const authorH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('作者'));
+            const authorContainer = document.getElementById('paper-authors');
+            if (authorH) {
+                const nextEl = authorH.nextElementSibling;
+                if (nextEl) {
+                    const authorLis = nextEl.querySelectorAll('li');
+                    if (authorLis.length > 0) {
+                        const authors = Array.from(authorLis).map(li => li.textContent.trim()).slice(0, 3);
+                        authorContainer.textContent = authors.join(', ');
+                    } else {
+                        // 纯文本：提取机构行和前3个作者
+                        const rawText = nextEl.textContent.trim();
+                        const parts = rawText.split(/[,，;；\n]/);
+                        const top3 = parts.slice(0, 3).join(', ');
+                        authorContainer.textContent = top3;
+                    }
+                }
+            }
+
+            // === KEYWORDS ===
+            const keywordH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('关键词'));
+            const keywordContainer = document.getElementById('paper-keywords');
+            if (keywordH) {
+                const nextEl = keywordH.nextElementSibling;
+                if (nextEl) {
+                    const keywordLis = nextEl.querySelectorAll('li');
+                    let fullKeywords = '';
+                    if (keywordLis.length > 0) {
+                        fullKeywords = Array.from(keywordLis).map(li => li.textContent.trim()).join(', ');
+                    } else {
+                        fullKeywords = nextEl.textContent.trim();
+                    }
+                    keywordContainer.textContent = fullKeywords;
+                }
+            }
+        }
+
+        // === TOC ===
+        const tocList = document.getElementById('toc-list');
+
+        // Brief 条目 - 指向顶部hero区域
+        const heroSection = document.querySelector('section.mb-6');
+        if (heroSection) {
+            heroSection.id = 'brief';
+            const briefLi = document.createElement('li');
+            const briefA = document.createElement('a');
+            briefA.href = '#brief';
+            briefA.textContent = 'Brief';
+            briefA.className = 'toc-link';
+            briefLi.appendChild(briefA);
+            tocList.appendChild(briefLi);
+        }
+
+        const allHeadings = content.querySelectorAll('h2, h3');
+        const exclude = ['tl;dr', '论文基本信息', '论文链接'];
+
+        allHeadings.forEach((h, i) => {
+            const text = h.textContent.toLowerCase();
+            if (exclude.some(e => text.includes(e.toLowerCase()))) {
+                h.style.display = 'none';
+                let current = h.nextElementSibling;
+                while (current && current.tagName !== 'H2') {
+                    current.style.display = 'none';
+                    current = current.nextElementSibling;
+                }
+                return;
+            }
+
+            const id = `s-${i}`;
+            h.id = id;
+
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `#${id}`;
+            a.textContent = h.textContent;
+            a.className = `toc-link ${h.tagName === 'H3' ? 'h3' : ''}`;
+            li.appendChild(a);
+            tocList.appendChild(li);
+        });
+
+        // === Scroll Highlight ===
+        const tocLinks = tocList.querySelectorAll('.toc-link');
+        const highlight = () => {
+            let current = null;
+            // Brief高亮：当滚动在顶部时
+            if (heroSection && heroSection.getBoundingClientRect().top > -50) {
+                current = 'brief';
+            }
+            allHeadings.forEach(h => {
+                if (h.id && h.getBoundingClientRect().top <= 100) current = h.id;
+            });
+            tocLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${current}`);
+            });
+        };
+        window.addEventListener('scroll', highlight, { passive: true });
+        highlight();
+    </script>
+</body>
+</html>

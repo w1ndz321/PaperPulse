@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>花了147万美元，造出4.5万个可执行SWE环境：OpenSWE把“训练修Bug智能体”这件事彻底开源了</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f0f7ff;
+            --card-bg: #ffffff;
+            --text: #1e3a5f;
+            --muted: #5a7a9a;
+            --accent: #0066cc;
+            --accent-light: #3399ff;
+            --accent-soft: #cce5ff;
+            --border: #d0e4f7;
+        }
+
+        body {
+            font-family: 'Source Serif 4', Georgia, serif;
+            background: linear-gradient(180deg, var(--bg) 0%, #e8f4ff 100%);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* === Hero Title === */
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.125rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.35;
+            color: var(--text);
+            background: linear-gradient(135deg, var(--text) 0%, #2d5a87 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* === TL;DR Card === */
+        .tldr-card {
+            background: linear-gradient(135deg, #e6f3ff 0%, #f5faff 50%, #cce8ff 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            box-shadow: 0 2px 12px rgba(0, 102, 204, 0.08);
+        }
+
+        .tldr-card::before {
+            content: 'TL;DR';
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            position: absolute;
+            top: 0.875rem;
+            left: 1.5rem;
+            background: rgba(255,255,255,0.8);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .tldr-content {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text);
+            padding-top: 0.75rem;
+        }
+
+        /* === Info Grid === */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            min-width: 0;
+            box-sizing: border-box;
+            transition: max-height 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            max-height: 78px;
+            overflow: hidden;
+        }
+
+        .info-item:hover {
+            border-color: var(--accent-soft);
+            box-shadow: 0 4px 16px rgba(0, 102, 204, 0.12);
+            z-index: 10;
+            max-height: 300px;
+        }
+
+        .info-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.375rem;
+        }
+
+        .info-value {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.4;
+            max-width: 100%;
+            word-break: break-word;
+        }
+
+        .info-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: block;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .info-link:hover {
+            text-decoration: underline;
+        }
+
+        /* === Divider - 渐变边框 === */
+        .divider-section {
+            margin: 3rem 0 2rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .divider-line {
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent-light) 70%, transparent 100%);
+            border-radius: 1px;
+        }
+
+        .divider-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            animation: breathe 3s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.35; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        /* === Prose === */
+        .prose h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.875rem;
+            color: var(--accent);
+            padding-bottom: 0.375rem;
+            border-bottom: 1px solid var(--accent-soft);
+        }
+
+        .prose h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.625rem;
+            color: var(--accent-light);
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .prose ul, .prose ol {
+            margin-bottom: 1rem;
+            padding-left: 1.25rem;
+        }
+
+        .prose li {
+            margin-bottom: 0.5rem;
+            line-height: 1.65;
+        }
+
+        .prose li::marker {
+            color: var(--accent);
+        }
+
+        .prose blockquote {
+            background: rgba(0, 102, 204, 0.06);
+            border-left: 2px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            border-radius: 0 6px 6px 0;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .prose code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .prose pre {
+            font-family: 'JetBrains Mono', monospace;
+            background: #1a365d;
+            color: #bee3f8;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .prose pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .prose strong {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .prose a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent);
+        }
+
+        .prose a:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+
+        /* === Sidebar === */
+        .sidebar {
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+        }
+
+        .toc-link {
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+            transition: all 0.15s ease;
+        }
+
+        .toc-link:hover {
+            color: var(--accent);
+            background: rgba(0, 102, 204, 0.06);
+        }
+
+        .toc-link.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-soft);
+            font-weight: 600;
+        }
+
+        .toc-link.h3 {
+            font-size: 0.75rem;
+            padding-left: 1.25rem;
+            font-weight: 400;
+        }
+
+        /* === Scroll Hint === */
+        .scroll-hint {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-align: center;
+            margin-top: 2rem;
+            animation: float 2s ease-in-out infinite;
+        }
+
+        .scroll-hint-arrow {
+            display: inline-block;
+            margin-top: 0.25rem;
+            animation: bounce 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes float {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #90cdf4; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* === Footer === */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 1.5rem 0;
+            margin-top: 2rem;
+        }
+
+        .footer-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Sidebar -->
+    <nav class="sidebar fixed left-0 top-0 h-screen w-56 p-5 overflow-y-auto hidden lg:block">
+        <div class="sticky top-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-2 mb-8">
+                <span class="text-2xl">🐻‍❄️</span>
+                <svg viewBox="0 0 16 16" class="w-5 h-5 -ml-1" fill="none">
+                    <circle cx="6" cy="6" r="4" stroke="#0066cc" stroke-width="1.5" fill="none"/>
+                    <line x1="9.5" y1="9.5" x2="14" y2="14" stroke="#0066cc" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="6" cy="6" r="1.5" fill="#0066cc" opacity="0.3"/>
+                </svg>
+                <span class="font-['Outfit'] font-semibold text-sm text-[var(--text)]">PaperPulse</span>
+            </div>
+
+            <p class="font-['JetBrains_Mono'] text-xs text-[var(--muted)] uppercase tracking-widest mb-3">Contents</p>
+            <ul id="toc-list" class="space-y-1"></ul>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="lg:ml-56">
+        <article class="max-w-4xl mx-auto px-8 py-12 lg:py-16">
+
+            <!-- Header -->
+            <header class="mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded">PAPER</span>
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--muted)]">2026-04-15</span>
+                </div>
+            </header>
+
+            <!-- Hero -->
+            <section class="mb-6">
+                <h1 class="hero-title mb-6" id="hero-title">花了147万美元，造出4.5万个可执行SWE环境：OpenSWE把“训练修Bug智能体”这件事彻底开源了</h1>
+
+                <div class="tldr-card mb-5">
+                    <p class="tldr-content" id="tldr-content">Loading...</p>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <p class="info-label">PAPER</p>
+                        <div class="info-value" id="paper-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">CODE</p>
+                        <div class="info-value" id="code-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">AUTHORS</p>
+                        <p class="info-value" id="paper-authors">-</p>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">KEYWORDS</p>
+                        <p class="info-value" id="paper-keywords">-</p>
+                    </div>
+                </div>
+
+                <div class="scroll-hint">
+                    <span>scroll down to read...</span>
+                    <span class="scroll-hint-arrow">↓</span>
+                </div>
+            </section>
+
+            <!-- Divider - 渐变边框 -->
+            <div class="divider-section">
+                <div class="divider-line"></div>
+                <span class="divider-text">DETAILED ANALYSIS</span>
+                <div class="divider-line"></div>
+            </div>
+
+            <!-- Content -->
+            <section class="prose" id="content">
+                <h1>花了147万美元，造出4.5万个可执行SWE环境：OpenSWE把“训练修Bug智能体”这件事彻底开源了</h1>
+<h2>TL;DR</h2>
+<p>训练软件工程智能体，最大难题不是模型，而是缺少大规模、能跑起来、能验对错的真实环境。OpenSWE用一个多智能体流水线，在64台机器上自动合成了45,320个可执行Docker环境，覆盖12.8k个Python仓库，并用“难度感知筛选”剔除无解和太简单的数据。最终训出的32B/72B模型在SWE-Bench Verified上做到62.4%/66.0%，明显超过同类开源方案。</p>
+<h2>论文基本信息</h2>
+<h3>论文链接</h3>
+<p>https://arxiv.org/abs/2603.13023</p>
+<h3>代码链接</h3>
+<p>https://github.com/GAIR-NLP/OpenSWE</p>
+<h3>作者团队</h3>
+<p>上海人工智能研究院（SII）、上海交通大学、GAIR<br />
+Dayuan Fu, Shenyu Wu, Yunze Wu</p>
+<h3>关键词</h3>
+<p>软件工程智能体、环境合成、Docker可执行环境、多智能体流水线、难度感知筛选、SWE-Bench</p>
+<h2>为什么SWE智能体难训练？卡住大家的不是模型，而是“真环境”太贵太难做</h2>
+<h3>现有痛点：数据不只是少，而是“不透明、不可复现、不够难”</h3>
+<p>这篇论文盯上的核心问题很实际：SWE智能体不是写一段静态代码就结束了，它得像程序员一样进仓库、改代码、跑测试、看报错、再修一轮。</p>
+<p>问题在于，这种训练需要<strong>可执行、可验证、可反复交互</strong>的环境。也就是每条样本都得配好仓库快照、依赖、Docker、测试脚本，还要能判断“修复到底是不是真的有效”。</p>
+<p>作者指出，现有开源方案有几个硬伤：</p>
+<ol>
+<li><strong>规模不够大</strong>：仓库数量和任务数量都有限  </li>
+<li><strong>仓库多样性不够</strong>：容易让模型学窄了  </li>
+<li><strong>工业方案不透明</strong>：效果不错，但基础设施不公开  </li>
+<li><strong>数据质量参差不齐</strong>：很多任务其实没法学</li>
+</ol>
+<h3>两类最坑的数据：无解题和送分题</h3>
+<p>论文特别强调了两种低价值环境：</p>
+<ul>
+<li><strong>PR-Issue misalignment（PR和Issue不对齐）</strong>：Issue说要修A，但PR真正修的是B，模型再聪明也学不会</li>
+<li><strong>Triviality（过于简单）</strong>：Issue里直接把答案说出来了，等于开卷抄答案</li>
+</ul>
+<p>作者给了两个很具体的例子：</p>
+<ul>
+<li>一个任务里，Issue要求检查<strong>完整40位commit hash</strong>，但真实补丁允许<strong>前7位短hash</strong>也通过测试，这就造成“描述和判题不一致”，本质上接近无解</li>
+<li>另一个任务里，Issue几乎直接写明：某个文件某一行的<code>ra</code>应该改成<code>raise</code>，这种样本几乎没有训练价值</li>
+</ul>
+<p>所以，论文的观点很明确：<strong>SWE训练数据不是越多越好，而是要先能跑，再够真，还得难度合适。</strong></p>
+<h2>OpenSWE到底造了多大一个场：4.5万个环境、1.28万个仓库、两周跑完</h2>
+<h3>规模上，OpenSWE是目前最大的全透明Python SWE训练框架</h3>
+<p>OpenSWE给出的数字非常夸张，而且是<strong>全开源</strong>的：</p>
+<ul>
+<li><strong>45,320</strong> 个可执行Docker环境</li>
+<li>覆盖 <strong>12.8k</strong> 个代码仓库</li>
+<li>基于约 <strong>572,114</strong> 个GitHub PR做筛选和构建</li>
+<li>在 <strong>64节点集群</strong> 上并行合成</li>
+<li>整个环境构建耗资 <strong>$891K</strong></li>
+<li>后续轨迹采样和难度筛选又花了 <strong>$576K</strong></li>
+<li>总投入约 <strong>$1.47M</strong></li>
+</ul>
+<p>最后保留下来的是：</p>
+<ul>
+<li>约 <strong>9,000</strong> 个质量保证环境</li>
+<li>约 <strong>13,000</strong> 条精选训练轨迹</li>
+</ul>
+<p>这篇论文最有价值的一点，不只是“我做得大”，而是<strong>把Dockerfile、评测脚本、合成流水线、基础设施全放出来了</strong>。这对学术界特别重要——以前很多组不是不想做，而是根本搭不起这套系统。</p>
+<h3>和已有数据集比，OpenSWE的“仓库覆盖”很猛</h3>
+<p>论文表2给了直接对比。几个关键数字：</p>
+<ul>
+<li><strong>SWE-rebench</strong>：3.5k repos，21.3k tasks  </li>
+<li><strong>SWE-rebench-v2（Python）</strong>：573 repos，7.2k tasks  </li>
+<li><strong>Scale-SWE（开源部分）</strong>：1.2k repos，20.2k tasks  </li>
+<li><strong>OpenSWE</strong>：<strong>12.8k repos，45.3k tasks</strong></li>
+</ul>
+<p>如果只看“开源且真实仓库”，OpenSWE在<strong>仓库数量</strong>和<strong>可执行任务数</strong>上都拉开了明显差距。可以把它理解成：以前大家是在几个小区里练修Bug，现在作者直接开出了一座城市。</p>
+<h2>多智能体流水线怎么造环境：从翻仓库、写Docker，到自动验真假</h2>
+<h3>第一步：先从GitHub PR里筛出“像样的题”</h3>
+<p>作者先收集GitHub PR，再做四层过滤，只保留适合做SWE任务的样本：</p>
+<ol>
+<li><strong>仓库至少5个star</strong>：避免太新的、没人维护的项目  </li>
+<li><strong>主语言必须是Python</strong>  </li>
+<li><strong>PR必须关联有描述的Issue</strong>  </li>
+<li><strong>补丁必须改到非测试代码</strong>：只改<code>tests/</code>、<code>spec/</code>、<code>e2e/</code>这种文件的不要</li>
+</ol>
+<p>这一步的目标很朴素：先把“连题目都说不清”或者“只是在补测试”的样本扔掉。</p>
+<h3>第二步：用4类Agent分工合作</h3>
+<p>整个OpenSWE流水线像一个小型“软件工程外包团队”，核心有几类Agent：</p>
+<ol>
+<li>
+<p><strong>仓库探索Agent</strong><br />
+   不会把仓库整棵树都翻烂，而是重点找README、CONTRIBUTING、依赖文件、CI配置这些“高价值线索”。</p>
+</li>
+<li>
+<p><strong>Dockerfile构建Agent</strong><br />
+   负责给每个任务搭出能跑的环境。</p>
+</li>
+<li>
+<p><strong>评测脚本Agent</strong><br />
+   负责生成bash脚本，确保测试能准确判断“补丁是否真的修好问题”。</p>
+</li>
+<li>
+<p><strong>测试分析Agent</strong><br />
+   测试失败时，判断到底是Docker环境错了、评测脚本错了，还是这个任务本身无解。</p>
+</li>
+</ol>
+<p>这套设计的关键不只是“自动化”，而是<strong>可迭代反馈</strong>：失败后不是全部推倒重来，而是把错误反馈给对应Agent继续修。</p>
+<h3>为了大规模构建，作者做了很多很工程的优化</h3>
+<p>这部分特别像“踩坑总结”，很接地气。</p>
+<h4>预构建Python基础镜像，避免网络下载把流程拖死</h4>
+<p>作者没有从通用Ubuntu镜像开始现装Python，而是预先做好一套 <code>openswe-python</code> 基础镜像，覆盖：</p>
+<ul>
+<li>Python 2.7</li>
+<li>Python 3.5 到 3.14</li>
+</ul>
+<p>这样做的好处很直接：</p>
+<ul>
+<li>避免构建时联网装Python导致超时</li>
+<li>共享底层镜像缓存，减少重复构建</li>
+</ul>
+<h4>不在容器里git clone，直接本地缓存仓库</h4>
+<p>他们维护本地bare repo缓存，构建时直接<code>COPY</code>代码进去，并提前checkout到目标commit。这样可以：</p>
+<ul>
+<li>避开GitHub API限速</li>
+<li>降低网络失败</li>
+<li>提高复现性</li>
+</ul>
+<h4>镜像不乱删，脚本改了就复用旧镜像</h4>
+<p>在常见情况下，如果只是评测脚本要改，而Dockerfile没变，他们会保留已有镜像继续用。这个优化带来了<strong>5×加速</strong>。</p>
+<h3>最后怎么判断一个环境真的“有效”？</h3>
+<p>论文采用双条件验证：</p>
+<ol>
+<li>先只打<strong>测试补丁</strong>，验证原始代码上测试确实会失败  </li>
+<li>再打<strong>完整修复补丁</strong>，验证所有相关测试都能通过</li>
+</ol>
+<p>只有<strong>“先失败、后通过”</strong>同时满足，样本才算有效。</p>
+<p>另外，脚本里会输出一个明确标记：<code>OPENSWE EXIT CODE=X</code>，系统通过正则解析这个结果，避免日志乱七八糟时误判。</p>
+<p>为了稳住大规模运行，每个容器还限制资源：</p>
+<ul>
+<li><strong>4个CPU核心</strong></li>
+<li><strong>24 GB内存</strong></li>
+<li><strong>200 GB存储</strong></li>
+</ul>
+<h2>不是所有环境都值得学：作者专门做了“难度感知筛选”</h2>
+<h3>他们不迷信数据量，而是筛“最有学习价值”的那一段</h3>
+<p>论文一个很重要的观点是：只拼数量，训练效果不一定最好。因为真实仓库合成出来的环境里，很多要么无解，要么太简单。</p>
+<p>所以作者额外花了 <strong>$576K</strong> 做轨迹采样和筛选，目标是找出：</p>
+<ul>
+<li><strong>不是无解题</strong></li>
+<li><strong>也不是一眼看穿的送分题</strong></li>
+<li><strong>难度刚好能提供学习信号</strong></li>
+</ul>
+<p>最终从4.5万个环境里，精选出大约：</p>
+<ul>
+<li><strong>9,000</strong> 个高质量环境</li>
+<li><strong>13,000</strong> 条训练轨迹</li>
+</ul>
+<p>这有点像刷题：不是题库越大越好，而是要挑那些“做完能涨能力”的题。</p>
+<h3>数据规模和质量是互补关系，不是二选一</h3>
+<p>作者后面的实验很清楚地说明：</p>
+<ul>
+<li><strong>更多高质量环境</strong>，性能会继续涨</li>
+<li><strong>只堆原始环境，不做筛选</strong>，效率不如“难度合适的数据”</li>
+<li>所以真正有效的是：<strong>规模化构建 + 质量感知筛选</strong></li>
+</ul>
+<p>这也是论文比很多“我们又造了个更大的数据集”更进一步的地方。</p>
+<h2>结果有多强：32B做到62.4%，72B做到66.0%，而且越加数据越没到头</h2>
+<h3>在SWE-Bench Verified上，OpenSWE训练出的模型拿到强结果</h3>
+<p>作者使用Qwen2.5-32B-Base和Qwen2.5-72B-Base做SFT，最终结果如下：</p>
+<ul>
+<li><strong>OpenSWE-32B + SWE-Agent：62.4%</strong></li>
+<li><strong>OpenSWE-72B + SWE-Agent：66.0%</strong></li>
+<li><strong>OpenSWE-32B + OpenHands：59.8%</strong></li>
+<li><strong>OpenSWE-72B + OpenHands：65.0%</strong></li>
+</ul>
+<p>几个关键对比：</p>
+<ul>
+<li>相比 <strong>daVinci-Dev-32B</strong> 的 <strong>56.1%</strong>，OpenSWE-32B 提高 <strong>6.3 个点</strong></li>
+<li>相比 <strong>daVinci-Dev-72B</strong> 的 <strong>58.5%</strong>，OpenSWE-72B 提高 <strong>7.5 个点</strong></li>
+<li>相比 <strong>SWE-Master-32B-RL</strong> 的 <strong>61.4%</strong>，OpenSWE-32B 也高 <strong>1.0 个点</strong></li>
+<li>论文还特别强调：32B结果比强基线高 <strong>4.6%</strong>，而且它用的还不是Coder版底座</li>
+</ul>
+<h3>OpenSWE比SWE-rebench训练数据更有效</h3>
+<p>表4很有说服力。同样的模型和脚手架，换训练数据源后结果差别很大：</p>
+<h4>SWE-Agent脚手架</h4>
+<ul>
+<li>32B：  </li>
+<li>SWE-rebench：<strong>50.2%</strong>  </li>
+<li>OpenSWE：<strong>62.4%</strong>  </li>
+<li>提升 <strong>12.2 个点</strong></li>
+<li>72B：  </li>
+<li>SWE-rebench：<strong>63.4%</strong>  </li>
+<li>OpenSWE：<strong>66.0%</strong>  </li>
+<li>提升 <strong>2.6 个点</strong></li>
+</ul>
+<h4>CodeAct / OpenHands脚手架</h4>
+<ul>
+<li>32B：51.4% → <strong>59.8%</strong></li>
+<li>72B：62.4% → <strong>65.0%</strong></li>
+</ul>
+<p>这说明OpenSWE的优势不是某个Agent框架“调得巧”，而是<strong>训练环境本身更有用</strong>。</p>
+<h3>数据继续加，性能还在稳定涨，没有看到饱和</h3>
+<p>论文做了数据扩展分析，发现四条曲线都接近<strong>log-linear</strong>增长，也就是数据越多，性能越高，而且还没撞到天花板。</p>
+<p>相关系数分别是：</p>
+<ul>
+<li>72B + OpenHands：<strong>r=0.972</strong></li>
+<li>72B + SWE-Agent：<strong>r=0.911</strong></li>
+<li>32B + SWE-Agent：<strong>r=0.893</strong></li>
+<li>32B + OpenHands：<strong>r=0.882</strong></li>
+</ul>
+<p>这些数字说明：这种增长趋势很稳定，不是偶然波动。</p>
+<p>更有意思的是，大模型更吃数据：</p>
+<ul>
+<li>OpenSWE-72B 比 OpenSWE-32B 最终高 <strong>3.6 个点</strong></li>
+<li>而daVinci-Dev从32B扩到72B，只提升 <strong>2.4 个点</strong></li>
+</ul>
+<p>换句话说，<strong>更好的训练环境，能让更大的模型把参数优势真正吃出来。</strong></p>
+<h2>不只会修Bug：代码、数学、科学题也一起涨了</h2>
+<h3>代码能力提升最明显</h3>
+<p>OpenSWE训练后，代码基准涨幅非常大：</p>
+<h4>32B</h4>
+<ul>
+<li>HumanEval：<strong>61.43 → 90.52</strong>，提升 <strong>+29.09</strong></li>
+<li>HumanEval+：<strong>54.01 → 85.24</strong>，提升 <strong>+31.23</strong></li>
+</ul>
+<h4>72B</h4>
+<ul>
+<li>HumanEval：<strong>66.82 → 76.25</strong>，提升 <strong>+9.43</strong></li>
+<li>HumanEval+：<strong>59.23 → 70.75</strong>，提升 <strong>+11.52</strong></li>
+</ul>
+<p>这个不难理解：SWE任务本来就要求读代码、改代码、调代码，和代码生成能力高度重合。</p>
+<h3>数学和科学推理也有外溢收益</h3>
+<p>比较亮眼的是，SWE训练还提升了数学与科学推理：</p>
+<h4>数学</h4>
+<ul>
+<li>32B GSM8K：<strong>+6.14</strong></li>
+<li>32B MATH-500：<strong>+8.20</strong></li>
+<li>72B GSM8K：<strong>+5.99</strong></li>
+<li>72B MATH-500：<strong>+12.20</strong></li>
+</ul>
+<h4>科学</h4>
+<ul>
+<li>32B SuperGPQA：<strong>+5.77</strong></li>
+<li>72B SuperGPQA：<strong>+8.10</strong></li>
+<li>SciBench分别提升 <strong>+4.80</strong> 和 <strong>+4.70</strong></li>
+</ul>
+<p>作者的解释也挺合理：修Bug训练的其实是<strong>多步规划、排错、迭代验证</strong>，这些能力会迁移到数学推理和科学问答。</p>
+<h3>但它不会让模型“背更多冷知识”</h3>
+<p>在偏事实记忆的基准上，变化就小很多：</p>
+<ul>
+<li>32B MMLU：<strong>83.57 → 83.57</strong>，几乎不变</li>
+<li>TriviaQA：提升也只有 <strong>+1.41</strong> 和 <strong>+2.85</strong></li>
+</ul>
+<p>这说明OpenSWE主要增强的是<strong>过程性推理能力</strong>，不是给模型补百科知识库。</p>
+<h2>总结：这篇论文最重要的，不是又刷高了分，而是把“SWE训练基础设施”公开了</h2>
+<h3>这项工作的真正价值</h3>
+<p>OpenSWE最值得关注的地方，我觉得有三点：</p>
+<ol>
+<li>
+<p><strong>把SWE训练从“少数大厂的黑箱能力”拉回开源社区</strong><br />
+   不只是放结果，而是把环境、脚本、流水线都公开</p>
+</li>
+<li>
+<p><strong>证明高质量环境数据本身就是核心能力</strong><br />
+   好数据不只是锦上添花，甚至能弥补底座不是专门Coder模型的劣势</p>
+</li>
+<li>
+<p><strong>给出一条明确路线：继续扩环境，性能还会涨</strong><br />
+   论文已经看到稳定的log-linear增长，而且还没饱和</p>
+</li>
+</ol>
+<h3>一句话评价</h3>
+<p>如果说以前大家都知道“SWE智能体要靠真环境练”，那这篇论文做的是：<strong>第一次把这套“真环境工厂”大规模、透明地搭出来了。</strong></p>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p class="footer-text">Generated by PaperPulse Lite</p>
+            </footer>
+
+        </article>
+    </main>
+
+    <script>
+        const content = document.getElementById('content');
+        const html = content.innerHTML;
+
+        // === 隐藏content中重复的h1标题 ===
+        const firstH1 = content.querySelector('h1');
+        if (firstH1) {
+            firstH1.style.display = 'none';
+        }
+
+        // === TL;DR - 找h2后面的所有内容，拼接后提取 ===
+        const tldrH2 = content.querySelector('h2');
+        if (tldrH2 && tldrH2.textContent.toLowerCase().includes('tl;dr')) {
+            // 收集h2后面所有p的内容，跳过h3标题本身
+            let tldrText = '';
+            let nextEl = tldrH2.nextElementSibling;
+            while (nextEl && nextEl.tagName !== 'H2') {
+                if (nextEl.tagName === 'P') {
+                    tldrText += nextEl.textContent.trim() + ' ';
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            if (tldrText) {
+                document.getElementById('tldr-content').textContent = tldrText.trim().substring(0, 350);
+            }
+        }
+
+        // === 提取论文基本信息（并隐藏该章节）===
+        const headings = content.querySelectorAll('h2');
+        let infoH2 = null;
+        headings.forEach(h => {
+            if (h.textContent.includes('论文基本信息') || h.textContent.includes('论文链接') || h.textContent.toLowerCase().includes('info')) {
+                infoH2 = h;
+            }
+        });
+
+        if (infoH2) {
+            // 隐藏整个"论文基本信息"章节
+            let current = infoH2.nextElementSibling;
+            while (current && current.tagName !== 'H2') {
+                current.style.display = 'none';
+                current = current.nextElementSibling;
+            }
+
+            // === PAPER / CODE: 区分论文链接和代码链接 ===
+            const paperLinksContainer = document.getElementById('paper-links');
+            const codeLinksContainer = document.getElementById('code-links');
+            let paperHtml = '';
+            let codeHtml = '';
+
+            // 先按h3区分
+            const codeH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('代码'));
+            const paperH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('论文链接'));
+
+            if (paperH3) {
+                let el = paperH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    // 也检查纯文本URL
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => paperHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            if (codeH3) {
+                let el = codeH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => codeHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            // 如果没有分h3，则按URL特征自动分类
+            if (!paperHtml && !codeHtml) {
+                const allLinks = content.querySelectorAll('a');
+                allLinks.forEach(a => {
+                    const url = a.getAttribute('href') || '';
+                    const label = a.textContent.trim();
+                    if (url.startsWith('http')) {
+                        if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('huggingface.co')) {
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        } else {
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    }
+                });
+            }
+
+            if (paperHtml) paperLinksContainer.innerHTML = paperHtml;
+            if (codeHtml) codeLinksContainer.innerHTML = codeHtml;
+
+            // === AUTHORS: 机构+前3作者 ===
+            const authorH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('作者'));
+            const authorContainer = document.getElementById('paper-authors');
+            if (authorH) {
+                const nextEl = authorH.nextElementSibling;
+                if (nextEl) {
+                    const authorLis = nextEl.querySelectorAll('li');
+                    if (authorLis.length > 0) {
+                        const authors = Array.from(authorLis).map(li => li.textContent.trim()).slice(0, 3);
+                        authorContainer.textContent = authors.join(', ');
+                    } else {
+                        // 纯文本：提取机构行和前3个作者
+                        const rawText = nextEl.textContent.trim();
+                        const parts = rawText.split(/[,，;；\n]/);
+                        const top3 = parts.slice(0, 3).join(', ');
+                        authorContainer.textContent = top3;
+                    }
+                }
+            }
+
+            // === KEYWORDS ===
+            const keywordH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('关键词'));
+            const keywordContainer = document.getElementById('paper-keywords');
+            if (keywordH) {
+                const nextEl = keywordH.nextElementSibling;
+                if (nextEl) {
+                    const keywordLis = nextEl.querySelectorAll('li');
+                    let fullKeywords = '';
+                    if (keywordLis.length > 0) {
+                        fullKeywords = Array.from(keywordLis).map(li => li.textContent.trim()).join(', ');
+                    } else {
+                        fullKeywords = nextEl.textContent.trim();
+                    }
+                    keywordContainer.textContent = fullKeywords;
+                }
+            }
+        }
+
+        // === TOC ===
+        const tocList = document.getElementById('toc-list');
+
+        // Brief 条目 - 指向顶部hero区域
+        const heroSection = document.querySelector('section.mb-6');
+        if (heroSection) {
+            heroSection.id = 'brief';
+            const briefLi = document.createElement('li');
+            const briefA = document.createElement('a');
+            briefA.href = '#brief';
+            briefA.textContent = 'Brief';
+            briefA.className = 'toc-link';
+            briefLi.appendChild(briefA);
+            tocList.appendChild(briefLi);
+        }
+
+        const allHeadings = content.querySelectorAll('h2, h3');
+        const exclude = ['tl;dr', '论文基本信息', '论文链接'];
+
+        allHeadings.forEach((h, i) => {
+            const text = h.textContent.toLowerCase();
+            if (exclude.some(e => text.includes(e.toLowerCase()))) {
+                h.style.display = 'none';
+                let current = h.nextElementSibling;
+                while (current && current.tagName !== 'H2') {
+                    current.style.display = 'none';
+                    current = current.nextElementSibling;
+                }
+                return;
+            }
+
+            const id = `s-${i}`;
+            h.id = id;
+
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `#${id}`;
+            a.textContent = h.textContent;
+            a.className = `toc-link ${h.tagName === 'H3' ? 'h3' : ''}`;
+            li.appendChild(a);
+            tocList.appendChild(li);
+        });
+
+        // === Scroll Highlight ===
+        const tocLinks = tocList.querySelectorAll('.toc-link');
+        const highlight = () => {
+            let current = null;
+            // Brief高亮：当滚动在顶部时
+            if (heroSection && heroSection.getBoundingClientRect().top > -50) {
+                current = 'brief';
+            }
+            allHeadings.forEach(h => {
+                if (h.id && h.getBoundingClientRect().top <= 100) current = h.id;
+            });
+            tocLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${current}`);
+            });
+        };
+        window.addEventListener('scroll', highlight, { passive: true });
+        highlight();
+    </script>
+</body>
+</html>

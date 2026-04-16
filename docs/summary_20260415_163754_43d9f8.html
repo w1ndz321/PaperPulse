@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta-Harness：让模型自己改“外壳”，把手写提示工程卷成自动化搜索</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f0f7ff;
+            --card-bg: #ffffff;
+            --text: #1e3a5f;
+            --muted: #5a7a9a;
+            --accent: #0066cc;
+            --accent-light: #3399ff;
+            --accent-soft: #cce5ff;
+            --border: #d0e4f7;
+        }
+
+        body {
+            font-family: 'Source Serif 4', Georgia, serif;
+            background: linear-gradient(180deg, var(--bg) 0%, #e8f4ff 100%);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* === Hero Title === */
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.125rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.35;
+            color: var(--text);
+            background: linear-gradient(135deg, var(--text) 0%, #2d5a87 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* === TL;DR Card === */
+        .tldr-card {
+            background: linear-gradient(135deg, #e6f3ff 0%, #f5faff 50%, #cce8ff 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            box-shadow: 0 2px 12px rgba(0, 102, 204, 0.08);
+        }
+
+        .tldr-card::before {
+            content: 'TL;DR';
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            position: absolute;
+            top: 0.875rem;
+            left: 1.5rem;
+            background: rgba(255,255,255,0.8);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .tldr-content {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text);
+            padding-top: 0.75rem;
+        }
+
+        /* === Info Grid === */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            min-width: 0;
+            box-sizing: border-box;
+            transition: max-height 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            max-height: 78px;
+            overflow: hidden;
+        }
+
+        .info-item:hover {
+            border-color: var(--accent-soft);
+            box-shadow: 0 4px 16px rgba(0, 102, 204, 0.12);
+            z-index: 10;
+            max-height: 300px;
+        }
+
+        .info-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.375rem;
+        }
+
+        .info-value {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.4;
+            max-width: 100%;
+            word-break: break-word;
+        }
+
+        .info-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: block;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .info-link:hover {
+            text-decoration: underline;
+        }
+
+        /* === Divider - 渐变边框 === */
+        .divider-section {
+            margin: 3rem 0 2rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .divider-line {
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent-light) 70%, transparent 100%);
+            border-radius: 1px;
+        }
+
+        .divider-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            animation: breathe 3s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.35; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        /* === Prose === */
+        .prose h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.875rem;
+            color: var(--accent);
+            padding-bottom: 0.375rem;
+            border-bottom: 1px solid var(--accent-soft);
+        }
+
+        .prose h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.625rem;
+            color: var(--accent-light);
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .prose ul, .prose ol {
+            margin-bottom: 1rem;
+            padding-left: 1.25rem;
+        }
+
+        .prose li {
+            margin-bottom: 0.5rem;
+            line-height: 1.65;
+        }
+
+        .prose li::marker {
+            color: var(--accent);
+        }
+
+        .prose blockquote {
+            background: rgba(0, 102, 204, 0.06);
+            border-left: 2px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            border-radius: 0 6px 6px 0;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .prose code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .prose pre {
+            font-family: 'JetBrains Mono', monospace;
+            background: #1a365d;
+            color: #bee3f8;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .prose pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .prose strong {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .prose a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent);
+        }
+
+        .prose a:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+
+        /* === Sidebar === */
+        .sidebar {
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+        }
+
+        .toc-link {
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+            transition: all 0.15s ease;
+        }
+
+        .toc-link:hover {
+            color: var(--accent);
+            background: rgba(0, 102, 204, 0.06);
+        }
+
+        .toc-link.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-soft);
+            font-weight: 600;
+        }
+
+        .toc-link.h3 {
+            font-size: 0.75rem;
+            padding-left: 1.25rem;
+            font-weight: 400;
+        }
+
+        /* === Scroll Hint === */
+        .scroll-hint {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-align: center;
+            margin-top: 2rem;
+            animation: float 2s ease-in-out infinite;
+        }
+
+        .scroll-hint-arrow {
+            display: inline-block;
+            margin-top: 0.25rem;
+            animation: bounce 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes float {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #90cdf4; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* === Footer === */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 1.5rem 0;
+            margin-top: 2rem;
+        }
+
+        .footer-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Sidebar -->
+    <nav class="sidebar fixed left-0 top-0 h-screen w-56 p-5 overflow-y-auto hidden lg:block">
+        <div class="sticky top-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-2 mb-8">
+                <span class="text-2xl">🐻‍❄️</span>
+                <svg viewBox="0 0 16 16" class="w-5 h-5 -ml-1" fill="none">
+                    <circle cx="6" cy="6" r="4" stroke="#0066cc" stroke-width="1.5" fill="none"/>
+                    <line x1="9.5" y1="9.5" x2="14" y2="14" stroke="#0066cc" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="6" cy="6" r="1.5" fill="#0066cc" opacity="0.3"/>
+                </svg>
+                <span class="font-['Outfit'] font-semibold text-sm text-[var(--text)]">PaperPulse</span>
+            </div>
+
+            <p class="font-['JetBrains_Mono'] text-xs text-[var(--muted)] uppercase tracking-widest mb-3">Contents</p>
+            <ul id="toc-list" class="space-y-1"></ul>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="lg:ml-56">
+        <article class="max-w-4xl mx-auto px-8 py-12 lg:py-16">
+
+            <!-- Header -->
+            <header class="mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded">PAPER</span>
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--muted)]">2026-04-15</span>
+                </div>
+            </header>
+
+            <!-- Hero -->
+            <section class="mb-6">
+                <h1 class="hero-title mb-6" id="hero-title">Meta-Harness：让模型自己改“外壳”，把手写提示工程卷成自动化搜索</h1>
+
+                <div class="tldr-card mb-5">
+                    <p class="tldr-content" id="tldr-content">Loading...</p>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <p class="info-label">PAPER</p>
+                        <div class="info-value" id="paper-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">CODE</p>
+                        <div class="info-value" id="code-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">AUTHORS</p>
+                        <p class="info-value" id="paper-authors">-</p>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">KEYWORDS</p>
+                        <p class="info-value" id="paper-keywords">-</p>
+                    </div>
+                </div>
+
+                <div class="scroll-hint">
+                    <span>scroll down to read...</span>
+                    <span class="scroll-hint-arrow">↓</span>
+                </div>
+            </section>
+
+            <!-- Divider - 渐变边框 -->
+            <div class="divider-section">
+                <div class="divider-line"></div>
+                <span class="divider-text">DETAILED ANALYSIS</span>
+                <div class="divider-line"></div>
+            </div>
+
+            <!-- Content -->
+            <section class="prose" id="content">
+                <h1>Meta-Harness：让模型自己改“外壳”，把手写提示工程卷成自动化搜索</h1>
+<h2>TL;DR</h2>
+<p>大模型系统的效果，很多时候不只看模型本身，还看外面的“harness”（也就是负责存什么、取什么、怎么喂给模型的那层代码）。这篇论文发现，过去优化这层代码的方法看得太少、记得太短，像“只看分数改作业”。作者提出 Meta-Harness：让一个 coding agent 直接读所有历史代码、分数和执行日志，在文件系统里自己翻案情、改 harness。结果上，文本分类比 ACE 高 7.7 个点且上下文少 4 倍；数学推理平均提升 4.7 个点；TerminalBench-2 上还超过了多个人工精调 agent。</p>
+<h2>论文基本信息</h2>
+<h3>论文链接</h3>
+<p>https://arxiv.org/abs/2603.28052</p>
+<h3>代码链接</h3>
+<p>项目页（含交互 Demo）：https://yoonholee.com/meta-harness/</p>
+<p>优化后的 harness：https://github.com/stanford-iris-lab/meta-harness-tbench2-artifact</p>
+<h3>作者团队</h3>
+<p>斯坦福大学、MIT、KRAFTON：Yoonho Lee、Roshen Nair、Qizheng Zhang</p>
+<h3>关键词</h3>
+<p>模型外壳优化、上下文工程、代码搜索、执行轨迹、智能体、检索增强、文本分类</p>
+<h2>过去的方法为什么不行：优化 harness 不能只看“考试分数”</h2>
+<h3>1. harness 不是提示词小修小补，而是整套“上下文调度系统”</h3>
+<p>论文里对 harness 的定义很明确：它是包在 LLM 外面的代码，决定<strong>哪些信息要存、何时检索、怎么组织给模型看</strong>。</p>
+<p>这件事有多重要？作者在引言里直接说，同一个 benchmark、同一个模型，<strong>只改 harness，性能差距能到 6 倍</strong>。也就是说，很多时候不是模型不行，而是“喂法”不行。</p>
+<h3>2. 现有文本优化方法，给的信息太压缩了</h3>
+<p>作者批评得很直接：现在很多 text optimizer 不适合优化 harness，因为它们的反馈太“失真”了。常见问题有三类：</p>
+<ul>
+<li><strong>无记忆</strong>：只看当前候选，不看完整历史</li>
+<li><strong>只看标量分数</strong>：像只知道“这次考了 62 分”，不知道错在哪</li>
+<li><strong>只看摘要</strong>：把长执行日志压成几句总结，细节全丢了</li>
+</ul>
+<p>论文 Table 1 很能说明问题。过去方法每次迭代能看到的上下文规模，通常只有：</p>
+<ul>
+<li>OPRO：<strong>0.002M tokens</strong></li>
+<li>TextGrad：<strong>0.015M</strong></li>
+<li>AlphaEvolve：<strong>0.022M</strong></li>
+<li>GEPA：<strong>0.008M</strong></li>
+<li>TTT-Discover：<strong>0.026M</strong></li>
+</ul>
+<p>而 Meta-Harness 直接拉到：</p>
+<ul>
+<li><strong>10.0M tokens / iteration</strong></li>
+</ul>
+<p>这是数量级上的差异。作者还说，在他们的设置里，<strong>单次评估最多会产生 10,000,000 tokens 的诊断信息</strong>，比之前大很多个量级。<br />
+很好理解：优化 harness 不是改一句 prompt，而是在改一个“多步流程系统”，如果中间检索、记忆、状态更新哪个环节出问题，只看最终分数根本追不到源头。</p>
+<h2>Meta-Harness 怎么做：把所有失败记录都放进文件系统，让 agent 自己查案</h2>
+<h3>1. 核心思路：不是喂一个总结，而是给它整个“案卷库”</h3>
+<p>Meta-Harness 的外循环很简单，就三步：</p>
+<ol>
+<li><strong>propose</strong>：agent 去文件系统里翻历史候选的代码、分数、执行轨迹，提出新 harness</li>
+<li><strong>evaluate</strong>：跑任务，评估新 harness</li>
+<li><strong>log</strong>：把新代码、分数、日志再存回文件系统</li>
+</ol>
+<p>然后循环。</p>
+<p>这里最关键的设计，不是“搜索”本身，而是<strong>让 proposer 能访问完整历史经验</strong>。每个候选 harness 都会留下一个目录，里面有：</p>
+<ul>
+<li>源代码</li>
+<li>评估分数</li>
+<li>执行轨迹</li>
+<li>prompts</li>
+<li>工具调用</li>
+<li>模型输出</li>
+<li>状态更新</li>
+</ul>
+<p>不是把这些粗暴塞进一个超长 prompt，而是让 coding agent 像程序员一样用 <code>grep</code>、<code>cat</code> 去查。</p>
+<h3>2. 为什么一定要 coding agent，而不是普通 LLM</h3>
+<p>原因很现实：历史文件太多，塞不进上下文窗。<br />
+所以 proposer 不能只是“看一段 prompt 然后续写”，而必须像开发者一样：</p>
+<ul>
+<li>决定该看哪些文件</li>
+<li>比较哪些旧版本</li>
+<li>检查改动是否引入回归</li>
+<li>直接改代码并验证接口是否通过</li>
+</ul>
+<p>论文里给了一个很具体的数据：在最难的设置下，proposer <strong>每次迭代中位数会读取 82 个文件</strong>，并且<strong>会参考 20 多个历史候选</strong>。</p>
+<p>这就像从“只看成绩单改题”升级成“翻所有错题本、草稿纸、监考录像，再决定改哪里”。</p>
+<h3>3. 外循环反而刻意做得很“笨”</h3>
+<p>这篇文章一个挺有意思的点是：作者没有在外层写很多花里胡哨的搜索规则。<br />
+Meta-Harness 只维护一个候选集合和 Pareto frontier，但<strong>不硬编码父代选择规则</strong>。agent 可以自由看任何历史 harness，不被限制必须从哪个 parent 变异。</p>
+<p>作者的想法是：<strong>把诊断和修改决策都交给 proposer，自身尽量少加人工启发式</strong>。这样未来 coding agent 变强，系统会自动吃到红利。</p>
+<h2>文本分类结果最炸裂：精度更高，还把上下文成本砍到 1/4</h2>
+<h3>1. 比手工设计的 ACE 高 7.7 个点，而且上下文少 4 倍</h3>
+<p>在在线文本分类实验里，作者用了 3 个数据集：</p>
+<ul>
+<li>LawBench</li>
+<li>Symptom2Disease</li>
+<li>USPTO-50k</li>
+</ul>
+<p>最终 test set 平均结果（Table 2）：</p>
+<ul>
+<li>Zero-shot：<strong>27.4</strong></li>
+<li>Few-shot(all)：<strong>40.8</strong></li>
+<li>MCE：<strong>40.0</strong></li>
+<li>ACE：<strong>40.9</strong></li>
+<li><strong>Meta-Harness：48.6</strong></li>
+</ul>
+<p>也就是说，Meta-Harness 相比最强人工 baseline ACE：</p>
+<ul>
+<li><strong>+7.7 个点</strong></li>
+<li>额外上下文 token 从 <strong>50.8K 降到 11.4K</strong></li>
+</ul>
+<p>相当于<strong>效果更好，同时更省上下文</strong>。这点很重要，因为很多系统提升其实是“拿更多上下文硬堆出来”的，但这篇不是。</p>
+<h3>2. 对比文本优化器：10 倍更快追平，最后还多赢 10 多个点</h3>
+<p>在同样预算下，作者对比了：</p>
+<ul>
+<li>Best-of-N</li>
+<li>OpenEvolve</li>
+<li>TTT-Discover</li>
+<li>GEPA</li>
+</ul>
+<p>搜索集准确率（Table 4）：</p>
+<ul>
+<li>GEPA：Median <strong>32.6</strong> / Best <strong>40.2</strong></li>
+<li>Best-of-N：<strong>34.0</strong> / <strong>44.2</strong></li>
+<li>OpenEvolve：<strong>39.1</strong> / <strong>43.3</strong></li>
+<li>TTT-Discover：<strong>34.1</strong> / <strong>45.6</strong></li>
+<li><strong>Meta-Harness：50.0</strong> / <strong>56.7</strong></li>
+</ul>
+<p>论文还强调：Meta-Harness 用<strong>约 0.1× 的评估次数</strong>，就能追平 OpenEvolve、TTT-Discover 的最终水平；最后收敛到的结果还<strong>高出 10 多个点</strong>。</p>
+<p>这说明它不只是“搜得更久”，而是<strong>搜得更对路</strong>。</p>
+<h3>3. 真正起作用的不是分数，而是原始执行轨迹</h3>
+<p>作者还做了一个很关键的消融实验（Table 3）：</p>
+<ul>
+<li>Scores Only：Median <strong>34.6</strong>，Best <strong>41.3</strong></li>
+<li>Scores + Summary：Median <strong>34.9</strong>，Best <strong>38.7</strong></li>
+<li><strong>Meta-Harness（full traces）</strong>：Median <strong>50.0</strong>，Best <strong>56.7</strong></li>
+</ul>
+<p>结论很硬：<br />
+<strong>摘要并没有补回关键信息，甚至可能因为压缩过度而更差。</strong><br />
+真正起决定作用的是<strong>原始 execution traces</strong>。</p>
+<h3>4. 换 9 个没见过的数据集，依然是最强</h3>
+<p>OOD 评测用了 9 个新数据集，平均准确率（Table 5）：</p>
+<ul>
+<li>Zero-shot：<strong>67.0</strong></li>
+<li>Few-shot(32)：<strong>69.6</strong></li>
+<li>ACE：<strong>70.2</strong></li>
+<li><strong>Meta-Harness：73.1</strong></li>
+</ul>
+<p>比 ACE 再高 <strong>2.9 个点</strong>，而且在 <strong>9 个数据集里拿了 6 个第一</strong>。<br />
+这说明它学到的不是某个数据集的小技巧，而是比较通用的分类 harness 策略。</p>
+<h2>数学检索和代码智能体也有效：一个发现的 harness，跨 5 个模型都能涨分</h2>
+<h3>1. 数学推理：不是“加检索就行”，而是要找到对的检索策略</h3>
+<p>作者研究的是 IMO 级别数学题的检索增强推理。难点在于：<br />
+以前大家知道“类似题的解法可能有帮助”，但<strong>检索常常帮倒忙</strong>，因为检错了、喂错了、时机错了。</p>
+<p>他们给 Meta-Harness 一个包含 <strong>50 万+</strong> 已解问题的语料库，让它自己搜“怎样检索、何时检索、给模型看什么”。</p>
+<p>最终在 200 道没见过的 IMO-level 问题上，跨 5 个 held-out 模型平均表现（Table 6）：</p>
+<ul>
+<li>No Retriever：<strong>34.1</strong></li>
+<li>Dense Retrieval(k=1)：<strong>34.4</strong></li>
+<li>Dense Retrieval(k=5)：<strong>38.1</strong></li>
+<li>Random Few-shot：<strong>32.2</strong></li>
+<li>BM25 Retrieval：<strong>37.5</strong></li>
+<li><strong>Meta-Harness：38.8</strong></li>
+</ul>
+<p>相对无检索平均提升 <strong>4.7 个点</strong>，比 BM25 也高 <strong>1.3 个点</strong>。</p>
+<p>更关键的是，这个 harness 不是只对一个模型有效，而是跨下面 5 个模型都能涨：</p>
+<ul>
+<li>GPT-5.4-nano</li>
+<li>GPT-5.4-mini</li>
+<li>Gemini-3.1-Flash-Lite</li>
+<li>Gemini-3-Flash</li>
+<li>GPT-OSS-20B</li>
+</ul>
+<p>这说明它找到的是<strong>可迁移的检索策略</strong>，不是某个模型的特供 prompt。</p>
+<h3>2. TerminalBench-2：自动搜出来的 agent，打赢手工精调基线</h3>
+<p>在 agentic coding 任务上，作者拿 TerminalBench-2 做实验。这是 89 个高难、长流程、全自动任务组成的 benchmark，本来就是各家 agent 拼刺刀的地方。</p>
+<p>结果（Table 7）：</p>
+<h4>Claude Opus 4.6</h4>
+<ul>
+<li>Terminus-KIRA：<strong>74.7%</strong></li>
+<li><strong>Meta-Harness：76.4%</strong></li>
+</ul>
+<h4>Claude Haiku 4.5</h4>
+<ul>
+<li>Goose：<strong>35.5%</strong></li>
+<li>Terminus-KIRA：<strong>33.7%</strong></li>
+<li><strong>Meta-Harness：37.6%</strong></li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>在 <strong>Opus 4.6</strong> 上，Meta-Harness 超过手工设计的 Terminus-KIRA，排到 leaderboard <strong>第 2</strong></li>
+<li>在 <strong>Haiku 4.5</strong> 上，Meta-Harness 直接拿到所有已报告 Haiku 4.5 agent 的 <strong>第 1</strong></li>
+</ul>
+<p>论文图 1 右图展示的就是这一点：<strong>模型自己优化出来的 harness，已经能在公开竞争 benchmark 上赢过人工调出来的 agent。</strong></p>
+<h2>这篇论文真正的新意：不是“自动调 prompt”，而是“自动做 harness 工程”</h2>
+<h3>1. 搜索对象变了：从文本片段，变成可执行代码</h3>
+<p>过去很多工作优化的是 prompt、模板、短文本。<br />
+这篇搜的是<strong>完整 harness 代码</strong>：包括提示构造、检索逻辑、记忆更新、调度编排。</p>
+<p>这意味着它改的不是“话术”，而是“工作流”。</p>
+<h3>2. 反馈接口变了：从摘要和分数，变成全历史可检索经验库</h3>
+<p>Meta-Harness 的核心创新，不是某个复杂搜索算法，而是一个非常工程、但很有效的设计：</p>
+<ul>
+<li><strong>把完整历史经验都保存在文件系统</strong></li>
+<li><strong>让 proposer 自己按需查阅</strong></li>
+<li><strong>不要提前替它做过度总结</strong></li>
+</ul>
+<p>这有点像从“领导给你一页 PPT 总结”变成“把所有原始材料都开放给你，你自己判断”。</p>
+<h3>3. 它已经表现出“复盘—归因—修正”的能力</h3>
+<p>论文在 TerminalBench-2 的案例里提到一个细节：早期 proposer 同时改了结构和 prompt，结果两个候选都退化；随后它<strong>主动怀疑是 prompt 改动把效果搞混了</strong>，于是把结构修改和 prompt 修改拆开验证，最后转向更安全的增量改法，并找到最佳候选。</p>
+<p>这说明它并不是机械试错，而是在做某种<strong>因果归因式的 debug</strong>。</p>
+<h2>总结：当 coding agent 足够强，harness 工程可能会先于“模型训练”被自动化</h2>
+<p>这篇论文最值得记住的一句话其实是：<strong>大模型系统的表现，不只由权重决定，也由 harness 决定。</strong></p>
+<p>Meta-Harness 给出的答案很朴素：</p>
+<ul>
+<li>不要只看分数</li>
+<li>不要只看摘要</li>
+<li>把历史代码和日志都留下来</li>
+<li>让一个会写代码、会查文件、会复盘的 agent 自己做 harness 工程</li>
+</ul>
+<p>结果也很扎实：</p>
+<ul>
+<li>文本分类：<strong>+7.7 点</strong>，上下文 <strong>降到 1/4</strong></li>
+<li>数学推理：跨 5 模型平均 <strong>+4.7 点</strong></li>
+<li>TerminalBench-2：超过手工强基线，Haiku 4.5 上 <strong>排名第 1</strong></li>
+</ul>
+<p>它真正打开的方向是：<br />
+<strong>以后我们可能不再手工调 agent 外壳，而是让 agent 自己不断重写自己的外壳。</strong></p>
+<p>如果这个趋势继续下去，提示工程、上下文工程、工作流工程，很可能都会从“手工活”变成“搜索问题”。</p>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p class="footer-text">Generated by PaperPulse Lite</p>
+            </footer>
+
+        </article>
+    </main>
+
+    <script>
+        const content = document.getElementById('content');
+        const html = content.innerHTML;
+
+        // === 隐藏content中重复的h1标题 ===
+        const firstH1 = content.querySelector('h1');
+        if (firstH1) {
+            firstH1.style.display = 'none';
+        }
+
+        // === TL;DR - 找h2后面的所有内容，拼接后提取 ===
+        const tldrH2 = content.querySelector('h2');
+        if (tldrH2 && tldrH2.textContent.toLowerCase().includes('tl;dr')) {
+            // 收集h2后面所有p的内容，跳过h3标题本身
+            let tldrText = '';
+            let nextEl = tldrH2.nextElementSibling;
+            while (nextEl && nextEl.tagName !== 'H2') {
+                if (nextEl.tagName === 'P') {
+                    tldrText += nextEl.textContent.trim() + ' ';
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            if (tldrText) {
+                document.getElementById('tldr-content').textContent = tldrText.trim().substring(0, 350);
+            }
+        }
+
+        // === 提取论文基本信息（并隐藏该章节）===
+        const headings = content.querySelectorAll('h2');
+        let infoH2 = null;
+        headings.forEach(h => {
+            if (h.textContent.includes('论文基本信息') || h.textContent.includes('论文链接') || h.textContent.toLowerCase().includes('info')) {
+                infoH2 = h;
+            }
+        });
+
+        if (infoH2) {
+            // 隐藏整个"论文基本信息"章节
+            let current = infoH2.nextElementSibling;
+            while (current && current.tagName !== 'H2') {
+                current.style.display = 'none';
+                current = current.nextElementSibling;
+            }
+
+            // === PAPER / CODE: 区分论文链接和代码链接 ===
+            const paperLinksContainer = document.getElementById('paper-links');
+            const codeLinksContainer = document.getElementById('code-links');
+            let paperHtml = '';
+            let codeHtml = '';
+
+            // 先按h3区分
+            const codeH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('代码'));
+            const paperH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('论文链接'));
+
+            if (paperH3) {
+                let el = paperH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    // 也检查纯文本URL
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => paperHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            if (codeH3) {
+                let el = codeH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => codeHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            // 如果没有分h3，则按URL特征自动分类
+            if (!paperHtml && !codeHtml) {
+                const allLinks = content.querySelectorAll('a');
+                allLinks.forEach(a => {
+                    const url = a.getAttribute('href') || '';
+                    const label = a.textContent.trim();
+                    if (url.startsWith('http')) {
+                        if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('huggingface.co')) {
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        } else {
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    }
+                });
+            }
+
+            if (paperHtml) paperLinksContainer.innerHTML = paperHtml;
+            if (codeHtml) codeLinksContainer.innerHTML = codeHtml;
+
+            // === AUTHORS: 机构+前3作者 ===
+            const authorH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('作者'));
+            const authorContainer = document.getElementById('paper-authors');
+            if (authorH) {
+                const nextEl = authorH.nextElementSibling;
+                if (nextEl) {
+                    const authorLis = nextEl.querySelectorAll('li');
+                    if (authorLis.length > 0) {
+                        const authors = Array.from(authorLis).map(li => li.textContent.trim()).slice(0, 3);
+                        authorContainer.textContent = authors.join(', ');
+                    } else {
+                        // 纯文本：提取机构行和前3个作者
+                        const rawText = nextEl.textContent.trim();
+                        const parts = rawText.split(/[,，;；\n]/);
+                        const top3 = parts.slice(0, 3).join(', ');
+                        authorContainer.textContent = top3;
+                    }
+                }
+            }
+
+            // === KEYWORDS ===
+            const keywordH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('关键词'));
+            const keywordContainer = document.getElementById('paper-keywords');
+            if (keywordH) {
+                const nextEl = keywordH.nextElementSibling;
+                if (nextEl) {
+                    const keywordLis = nextEl.querySelectorAll('li');
+                    let fullKeywords = '';
+                    if (keywordLis.length > 0) {
+                        fullKeywords = Array.from(keywordLis).map(li => li.textContent.trim()).join(', ');
+                    } else {
+                        fullKeywords = nextEl.textContent.trim();
+                    }
+                    keywordContainer.textContent = fullKeywords;
+                }
+            }
+        }
+
+        // === TOC ===
+        const tocList = document.getElementById('toc-list');
+
+        // Brief 条目 - 指向顶部hero区域
+        const heroSection = document.querySelector('section.mb-6');
+        if (heroSection) {
+            heroSection.id = 'brief';
+            const briefLi = document.createElement('li');
+            const briefA = document.createElement('a');
+            briefA.href = '#brief';
+            briefA.textContent = 'Brief';
+            briefA.className = 'toc-link';
+            briefLi.appendChild(briefA);
+            tocList.appendChild(briefLi);
+        }
+
+        const allHeadings = content.querySelectorAll('h2, h3');
+        const exclude = ['tl;dr', '论文基本信息', '论文链接'];
+
+        allHeadings.forEach((h, i) => {
+            const text = h.textContent.toLowerCase();
+            if (exclude.some(e => text.includes(e.toLowerCase()))) {
+                h.style.display = 'none';
+                let current = h.nextElementSibling;
+                while (current && current.tagName !== 'H2') {
+                    current.style.display = 'none';
+                    current = current.nextElementSibling;
+                }
+                return;
+            }
+
+            const id = `s-${i}`;
+            h.id = id;
+
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `#${id}`;
+            a.textContent = h.textContent;
+            a.className = `toc-link ${h.tagName === 'H3' ? 'h3' : ''}`;
+            li.appendChild(a);
+            tocList.appendChild(li);
+        });
+
+        // === Scroll Highlight ===
+        const tocLinks = tocList.querySelectorAll('.toc-link');
+        const highlight = () => {
+            let current = null;
+            // Brief高亮：当滚动在顶部时
+            if (heroSection && heroSection.getBoundingClientRect().top > -50) {
+                current = 'brief';
+            }
+            allHeadings.forEach(h => {
+                if (h.id && h.getBoundingClientRect().top <= 100) current = h.id;
+            });
+            tocLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${current}`);
+            });
+        };
+        window.addEventListener('scroll', highlight, { passive: true });
+        highlight();
+    </script>
+</body>
+</html>

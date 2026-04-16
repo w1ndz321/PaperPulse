@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemAgent：只用 8K 窗口，竟把长文本问答一路撑到 350 万 token，准确率几乎不掉</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #f0f7ff;
+            --card-bg: #ffffff;
+            --text: #1e3a5f;
+            --muted: #5a7a9a;
+            --accent: #0066cc;
+            --accent-light: #3399ff;
+            --accent-soft: #cce5ff;
+            --border: #d0e4f7;
+        }
+
+        body {
+            font-family: 'Source Serif 4', Georgia, serif;
+            background: linear-gradient(180deg, var(--bg) 0%, #e8f4ff 100%);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* === Hero Title === */
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.125rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.35;
+            color: var(--text);
+            background: linear-gradient(135deg, var(--text) 0%, #2d5a87 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* === TL;DR Card === */
+        .tldr-card {
+            background: linear-gradient(135deg, #e6f3ff 0%, #f5faff 50%, #cce8ff 100%);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            box-shadow: 0 2px 12px rgba(0, 102, 204, 0.08);
+        }
+
+        .tldr-card::before {
+            content: 'TL;DR';
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            position: absolute;
+            top: 0.875rem;
+            left: 1.5rem;
+            background: rgba(255,255,255,0.8);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .tldr-content {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--text);
+            padding-top: 0.75rem;
+        }
+
+        /* === Info Grid === */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .info-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            min-width: 0;
+            box-sizing: border-box;
+            transition: max-height 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            max-height: 78px;
+            overflow: hidden;
+        }
+
+        .info-item:hover {
+            border-color: var(--accent-soft);
+            box-shadow: 0 4px 16px rgba(0, 102, 204, 0.12);
+            z-index: 10;
+            max-height: 300px;
+        }
+
+        .info-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 0.12em;
+            margin-bottom: 0.375rem;
+        }
+
+        .info-value {
+            font-size: 0.85rem;
+            color: var(--text);
+            line-height: 1.4;
+            max-width: 100%;
+            word-break: break-word;
+        }
+
+        .info-link {
+            color: var(--accent);
+            text-decoration: none;
+            display: block;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .info-link:hover {
+            text-decoration: underline;
+        }
+
+        /* === Divider - 渐变边框 === */
+        .divider-section {
+            margin: 3rem 0 2rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .divider-line {
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--accent) 30%, var(--accent-light) 70%, transparent 100%);
+            border-radius: 1px;
+        }
+
+        .divider-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.15em;
+            color: var(--accent);
+            animation: breathe 3s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.35; transform: scale(0.98); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        /* === Prose === */
+        .prose h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.375rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.875rem;
+            color: var(--accent);
+            padding-bottom: 0.375rem;
+            border-bottom: 1px solid var(--accent-soft);
+        }
+
+        .prose h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.0625rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: 0.625rem;
+            color: var(--accent-light);
+        }
+
+        .prose p {
+            font-size: 1rem;
+            line-height: 1.8;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .prose ul, .prose ol {
+            margin-bottom: 1rem;
+            padding-left: 1.25rem;
+        }
+
+        .prose li {
+            margin-bottom: 0.5rem;
+            line-height: 1.65;
+        }
+
+        .prose li::marker {
+            color: var(--accent);
+        }
+
+        .prose blockquote {
+            background: rgba(0, 102, 204, 0.06);
+            border-left: 2px solid var(--accent);
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            border-radius: 0 6px 6px 0;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .prose code {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent-soft);
+            color: var(--accent);
+            padding: 0.125rem 0.375rem;
+            border-radius: 3px;
+            font-size: 0.85rem;
+        }
+
+        .prose pre {
+            font-family: 'JetBrains Mono', monospace;
+            background: #1a365d;
+            color: #bee3f8;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .prose pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .prose strong {
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        .prose a {
+            color: var(--accent);
+            text-decoration: none;
+            border-bottom: 1px dotted var(--accent);
+        }
+
+        .prose a:hover {
+            border-bottom: 1px solid var(--accent);
+        }
+
+        /* === Sidebar === */
+        .sidebar {
+            background: var(--card-bg);
+            border-right: 1px solid var(--border);
+        }
+
+        .toc-link {
+            display: block;
+            padding: 0.375rem 0.75rem;
+            color: var(--muted);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            border-left: 2px solid transparent;
+            border-radius: 0 4px 4px 0;
+            transition: all 0.15s ease;
+        }
+
+        .toc-link:hover {
+            color: var(--accent);
+            background: rgba(0, 102, 204, 0.06);
+        }
+
+        .toc-link.active {
+            color: var(--accent);
+            border-left-color: var(--accent);
+            background: var(--accent-soft);
+            font-weight: 600;
+        }
+
+        .toc-link.h3 {
+            font-size: 0.75rem;
+            padding-left: 1.25rem;
+            font-weight: 400;
+        }
+
+        /* === Scroll Hint === */
+        .scroll-hint {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-align: center;
+            margin-top: 2rem;
+            animation: float 2s ease-in-out infinite;
+        }
+
+        .scroll-hint-arrow {
+            display: inline-block;
+            margin-top: 0.25rem;
+            animation: bounce 1.5s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes float {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        /* === Scrollbar === */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #90cdf4; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* === Footer === */
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 1.5rem 0;
+            margin-top: 2rem;
+        }
+
+        .footer-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.6875rem;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        /* === Responsive === */
+        @media (max-width: 768px) {
+            .info-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Sidebar -->
+    <nav class="sidebar fixed left-0 top-0 h-screen w-56 p-5 overflow-y-auto hidden lg:block">
+        <div class="sticky top-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-2 mb-8">
+                <span class="text-2xl">🐻‍❄️</span>
+                <svg viewBox="0 0 16 16" class="w-5 h-5 -ml-1" fill="none">
+                    <circle cx="6" cy="6" r="4" stroke="#0066cc" stroke-width="1.5" fill="none"/>
+                    <line x1="9.5" y1="9.5" x2="14" y2="14" stroke="#0066cc" stroke-width="1.5" stroke-linecap="round"/>
+                    <circle cx="6" cy="6" r="1.5" fill="#0066cc" opacity="0.3"/>
+                </svg>
+                <span class="font-['Outfit'] font-semibold text-sm text-[var(--text)]">PaperPulse</span>
+            </div>
+
+            <p class="font-['JetBrains_Mono'] text-xs text-[var(--muted)] uppercase tracking-widest mb-3">Contents</p>
+            <ul id="toc-list" class="space-y-1"></ul>
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="lg:ml-56">
+        <article class="max-w-4xl mx-auto px-8 py-12 lg:py-16">
+
+            <!-- Header -->
+            <header class="mb-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded">PAPER</span>
+                    <span class="font-['JetBrains_Mono'] text-xs text-[var(--muted)]">2026-04-15</span>
+                </div>
+            </header>
+
+            <!-- Hero -->
+            <section class="mb-6">
+                <h1 class="hero-title mb-6" id="hero-title">MemAgent：只用 8K 窗口，竟把长文本问答一路撑到 350 万 token，准确率几乎不掉</h1>
+
+                <div class="tldr-card mb-5">
+                    <p class="tldr-content" id="tldr-content">Loading...</p>
+                </div>
+
+                <div class="info-grid">
+                    <div class="info-item">
+                        <p class="info-label">PAPER</p>
+                        <div class="info-value" id="paper-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">CODE</p>
+                        <div class="info-value" id="code-links">-</div>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">AUTHORS</p>
+                        <p class="info-value" id="paper-authors">-</p>
+                    </div>
+                    <div class="info-item">
+                        <p class="info-label">KEYWORDS</p>
+                        <p class="info-value" id="paper-keywords">-</p>
+                    </div>
+                </div>
+
+                <div class="scroll-hint">
+                    <span>scroll down to read...</span>
+                    <span class="scroll-hint-arrow">↓</span>
+                </div>
+            </section>
+
+            <!-- Divider - 渐变边框 -->
+            <div class="divider-section">
+                <div class="divider-line"></div>
+                <span class="divider-text">DETAILED ANALYSIS</span>
+                <div class="divider-line"></div>
+            </div>
+
+            <!-- Content -->
+            <section class="prose" id="content">
+                <h1>MemAgent：只用 8K 窗口，竟把长文本问答一路撑到 350 万 token，准确率几乎不掉</h1>
+<h2>TL;DR</h2>
+<p>长上下文模型的老问题是：窗口越拉越长，算得越慢，效果还常常越掉。MemAgent换了个思路——不硬吃整篇超长文档，而是像人做笔记一样分块阅读，并用强化学习训练模型“该记什么、该丢什么”。结果很猛：只在 32K 文本上训练、实际窗口仅 8K，却能外推到 350 万 token 的 QA，性能下降不到 5%，在 512K 的 RULER 上还能保持 95%+ 准确率。</p>
+<h2>论文基本信息</h2>
+<h3>论文链接</h3>
+<ul>
+<li>arXiv: https://arxiv.org/abs/2507.02259</li>
+</ul>
+<h3>代码链接</h3>
+<ul>
+<li>项目主页 / 代码入口: https://memagent-sialab.github.io/</li>
+</ul>
+<h3>作者团队</h3>
+<ul>
+<li>字节跳动、清华大学 AIR  </li>
+<li>Hongli Yu, Tinghong Chen, Jiangtao Feng</li>
+</ul>
+<h3>关键词</h3>
+<ul>
+<li>长上下文大模型</li>
+<li>记忆机制</li>
+<li>强化学习</li>
+<li>线性复杂度</li>
+<li>长度外推</li>
+<li>多轮智能体训练</li>
+</ul>
+<h2>为什么 100 万上下文还不够：长文本模型真正卡在“越长越不会用”</h2>
+<h3>1. 现有路线都各有硬伤</h3>
+<p>论文一开头就点得很直接：长文本处理想同时满足三件事非常难——<strong>无限长度、性能不掉、线性成本</strong>。</p>
+<p>现在主流方案大致有三类：</p>
+<ol>
+<li>
+<p><strong>位置编码外推 + 持续预训练</strong><br />
+   能把窗口拉长，但超长时还是容易掉点，而且注意力计算通常还是 <strong>O(n²)</strong>，文本一长就很贵。</p>
+</li>
+<li>
+<p><strong>稀疏/线性注意力</strong><br />
+   复杂度能降，但很多方法要改架构、从头训练，工程代价高；稀疏模式还常依赖人工规则。</p>
+</li>
+<li>
+<p><strong>上下文压缩 / 外部记忆模块</strong><br />
+   能减负，但往往需要外挂模块或额外操作，破坏标准生成流程，兼容性一般。</p>
+</li>
+</ol>
+<h3>2. 论文抓住了一个更朴素的问题</h3>
+<p>人读一本书，不会逐字逐句全背下来，而是边读边做摘要、留关键线索。MemAgent就是把这个过程塞进 LLM：</p>
+<ul>
+<li>文档不是一次性喂完</li>
+<li>而是<strong>分块读取</strong></li>
+<li>每读完一块，就<strong>重写一次固定长度记忆</strong></li>
+<li>最后只靠“问题 + 记忆”来回答</li>
+</ul>
+<p>关键点在于：<strong>记忆长度固定</strong>。这意味着每一步看到的上下文规模都差不多，于是总成本就从“越读越爆炸”变成了<strong>随文档长度线性增长 O(N)</strong>。</p>
+<h2>MemAgent 怎么做：把超长文档变成“分段阅读 + 覆盖式记忆”</h2>
+<h3>1. 推理流程其实很像“边看边记笔记”</h3>
+<p>MemAgent有两个模块：</p>
+<ol>
+<li><strong>Context-Processing</strong>：逐块读文档，并更新记忆  </li>
+<li><strong>Answer-Generation</strong>：读完后，根据问题和最终记忆输出答案</li>
+</ol>
+<p>论文给了很具体的配置。训练时虽然模型总窗口只有 <strong>8K</strong>，但它被拆成了：</p>
+<ul>
+<li>1024 tokens：问题</li>
+<li>5000 tokens：当前文档块</li>
+<li>1024 tokens：记忆</li>
+<li>1024 tokens：输出</li>
+<li>其余留给模板</li>
+</ul>
+<p>也就是说，模型每次只读 <strong>5000 token 左右的一段正文</strong>，然后把重要信息压进 <strong>1024 token 的记忆</strong>里。</p>
+<h3>2. 为什么“覆盖式记忆”是关键</h3>
+<p>MemAgent不是把记忆越攒越长，而是每轮直接<strong>覆盖旧记忆</strong>。这听起来很粗暴，但正是它能扩展的原因：</p>
+<ul>
+<li>记忆长度永远不变</li>
+<li>每一块的计算量近似固定</li>
+<li>全流程复杂度因此是<strong>严格线性的</strong></li>
+</ul>
+<p>论文把这个记忆看成一个潜变量：模型一边“读 chunk”，一边“写 memory”。本质上，相当于把 Transformer 改造成一种<strong>可控状态大小的循环系统</strong>，但又不需要改底层注意力结构。</p>
+<h3>3. 记忆是 token 级，可读可查</h3>
+<p>很多线性注意力或状态空间方法，压缩发生在隐藏状态里，外人看不见。MemAgent的记忆直接就是<strong>普通 token</strong>，所以：</p>
+<ul>
+<li>人能看懂中间记了什么</li>
+<li>甚至可以手动检查、编辑</li>
+<li>也更方便设计奖励函数</li>
+</ul>
+<p>这一点很像让模型真的在纸上写摘要，而不是只在脑子里留下模糊印象。</p>
+<h2>强化学习是这篇论文的灵魂：不是“有记忆”就行，而是要学会“记对东西”</h2>
+<h3>1. 只加记忆模块，不足以解决问题</h3>
+<p>作者明确做了消融：<strong>有 memory 但没 RL</strong>，效果会比原模型好一些，但随着长度上升，表现还是会往下掉。原因很直观：</p>
+<p>模型知道“可以记”，不代表它知道“该记什么”。</p>
+<p>长文本里最难的，不是存信息，而是<strong>筛信息</strong>：
+- 哪些现在看着没用，后面会变关键？
+- 哪些只是干扰项？
+- 1024 个记忆 token 应该分给谁？</p>
+<p>这些很难靠普通监督学习直接教会。</p>
+<h3>2. 它怎么训练：把多个独立对话一起优化</h3>
+<p>MemAgent的一个特殊点是：处理一篇长文时，会产生多轮彼此独立的“读块-写记忆”对话，最后再来一次“基于记忆回答”。</p>
+<p>普通多轮 agent 训练，通常是把工具调用和回复串成一条长轨迹。但这里每一轮读不同 chunk，属于<strong>上下文独立的多轮对话</strong>，没法直接按老办法优化。</p>
+<p>所以论文把 DAPO 扩展成了 <strong>Multi-Conv DAPO</strong>：</p>
+<ul>
+<li>一个样本会生成多段 conversation</li>
+<li>最终答案对不对，决定整个样本的 reward</li>
+<li>这个 reward 再反向分配给前面所有记忆更新步骤</li>
+</ul>
+<p>翻成人话就是：<br />
+<strong>如果最后答对了，说明前面那些“记笔记”的动作整体是有价值的；如果答错了，前面大概率记偏了。</strong></p>
+<h3>3. 奖励设计很朴素，但够实用</h3>
+<p>论文用的是<strong>规则验证器</strong>，不是额外训练一个奖励模型：</p>
+<ul>
+<li>单答案等价任务：答对任一标准答案就给分</li>
+<li>多答案任务：按命中比例给分</li>
+</ul>
+<p>好处是直接、稳定，也契合 RULER 这类可验证 benchmark。</p>
+<h2>结果最值得看：8K 训练窗口，外推到 350 万 token 还能稳住</h2>
+<h3>1. 主结果：MemAgent 几乎是“越长越不慌”</h3>
+<p>在 RULER-HotpotQA 上，作者比较了 7K 到 3.5M token 的长度。</p>
+<h4>RL-MemAgent-14B</h4>
+<ul>
+<li>7K：<strong>83.59</strong></li>
+<li>14K：82.03</li>
+<li>28K：84.38</li>
+<li>56K：80.47</li>
+<li>112K：76.56</li>
+<li>224K：81.25</li>
+<li>448K：75.00</li>
+<li>896K：77.34</li>
+<li>1.75M：76.56</li>
+<li>3.5M：<strong>78.12</strong></li>
+</ul>
+<p>从 7K 到 3.5M，只掉了 <strong>5.47 分</strong>，这基本就是论文说的“性能损失 &lt; 5%”那个量级。</p>
+<h4>RL-MemAgent-7B</h4>
+<ul>
+<li>7K：<strong>82.03</strong></li>
+<li>896K：76.56</li>
+<li>1.75M：75.78</li>
+<li>3.5M：<strong>71.09</strong></li>
+</ul>
+<p>7B 也很能打，说明这套方法不完全依赖大参数量。</p>
+<h3>2. 对比模型掉得很明显</h3>
+<p>几个基线非常有代表性：</p>
+<h4>Qwen2.5-Instruct-14B-1M</h4>
+<ul>
+<li>7K：60.16</li>
+<li>112K：50.00</li>
+<li>448K：8.59</li>
+<li>896K：<strong>0.00</strong></li>
+</ul>
+<h4>Qwen2.5-Instruct-7B-1M</h4>
+<ul>
+<li>7K：61.72</li>
+<li>112K：51.56</li>
+<li>448K：12.50</li>
+<li>896K：<strong>0.00</strong></li>
+</ul>
+<h4>QwenLong-L1-32B</h4>
+<ul>
+<li>7K：72.66</li>
+<li>56K：60.94</li>
+<li>112K：31.25</li>
+<li>896K：11.72</li>
+</ul>
+<p>很扎眼的一点是：<strong>理论窗口很长，不代表真能用好超长信息。</strong><br />
+有些 1M 上下文模型，到了 896K 就已经接近归零了；MemAgent虽然单次只看 8K，却能在百万级以上继续工作。</p>
+<h3>3. OOD 任务也没塌</h3>
+<p>作者还测了 RULER 的其他分布外任务，包括：</p>
+<ul>
+<li>needle-in-a-haystack 变体</li>
+<li>variable tracking</li>
+<li>frequent words extraction</li>
+<li>基于 SQuAD 合成的 QA</li>
+</ul>
+<p>结果里最亮眼的是：</p>
+<ul>
+<li><strong>MemAgent-14B 在 8K 到 512K 的 RULER 平均任务上都保持 95%+</strong></li>
+<li><strong>MemAgent-7B 甚至优于 32B 的无 RL 版本和多种长上下文后训练模型</strong></li>
+</ul>
+<p>这说明它学到的不只是 HotpotQA 的套路，而是一种更泛化的“长文本筛选与记忆”能力。</p>
+<h2>一个具体案例：模型真的像人在长文里抓线索</h2>
+<h3>1. 问题是个两跳问答</h3>
+<p>题目问：</p>
+<blockquote>
+<p>电影《Big Stone Gap》的导演，常驻纽约哪个城市区域？</p>
+</blockquote>
+<p>正确推理链是：</p>
+<ul>
+<li>《Big Stone Gap》导演是 <strong>Adriana Trigiani</strong></li>
+<li>Adriana Trigiani 常驻 <strong>Greenwich Village, New York City</strong></li>
+</ul>
+<h3>2. 它前两轮没有答案，但会先留可疑线索</h3>
+<p>第一轮读到的是一个干扰项：<br />
+Ghost 这个制作团队也“based in New York City”。</p>
+<p>模型没有直接扔掉，而是先记下来。<br />
+这很像人做题时先把“可能相关”的纽约地点记在草稿纸上。</p>
+<p>第二轮没有相关信息，模型基本保持记忆不乱改，说明它能抗干扰。</p>
+<h3>3. 第三轮看到关键文档后，立刻把链路补齐</h3>
+<p>第三轮同时读到两条关键事实：</p>
+<ul>
+<li>Big Stone Gap 由 Adriana Trigiani 编剧并执导</li>
+<li>Adriana Trigiani 常驻 Greenwich Village, New York City</li>
+</ul>
+<p>于是记忆更新成了完整答案链，最后输出正确答案。<br />
+论文想说明的是：这种行为不是架构里硬编码出来的，而是<strong>通过 RL 学出来的文本级记忆策略</strong>——先保留潜在线索，遇到证据后再迅速收束。</p>
+<h2>这篇论文真正的新意：不改 Transformer 主体，却把长文本问题改写成“会记笔记的 Agent”</h2>
+<h3>1. 创新点可以概括成三层</h3>
+<ol>
+<li>
+<p><strong>固定长度、覆盖式 token 记忆</strong><br />
+   不靠外挂数据库，不改注意力核，直接在 token 空间做“摘要记忆”。</p>
+</li>
+<li>
+<p><strong>把长文档处理变成 agent workflow</strong><br />
+   分块读、逐轮写、最后答，流程清晰，能无限扩。</p>
+</li>
+<li>
+<p><strong>用 Multi-Conv DAPO 端到端训练</strong><br />
+   让“最后答对”反过来塑造“前面该怎么记”。</p>
+</li>
+</ol>
+<h3>2. 它最适合什么场景</h3>
+<p>从论文实验看，MemAgent特别适合这类任务：</p>
+<ul>
+<li>超长文档 QA</li>
+<li>多跳检索与推理</li>
+<li>需要跨大量干扰信息找关键证据的任务</li>
+<li>需要线性成本处理超长输入的 agent 系统</li>
+</ul>
+<h3>3. 一句话总结</h3>
+<p>这篇论文最有价值的地方，不是把上下文窗口继续往上堆，而是证明了另一条路：</p>
+<p><strong>与其让模型“看完一切”，不如训练它“边看边记，而且记得对”。</strong></p>
+<p>如果后续这套方法能在真实文档分析、代码仓库理解、长轨迹 agent 中稳定复现，MemAgent 很可能会成为“长上下文 LLM”从拼窗口大小，转向拼记忆策略的一个关键拐点。</p>
+            </section>
+
+            <!-- Footer -->
+            <footer class="footer">
+                <p class="footer-text">Generated by PaperPulse Lite</p>
+            </footer>
+
+        </article>
+    </main>
+
+    <script>
+        const content = document.getElementById('content');
+        const html = content.innerHTML;
+
+        // === 隐藏content中重复的h1标题 ===
+        const firstH1 = content.querySelector('h1');
+        if (firstH1) {
+            firstH1.style.display = 'none';
+        }
+
+        // === TL;DR - 找h2后面的所有内容，拼接后提取 ===
+        const tldrH2 = content.querySelector('h2');
+        if (tldrH2 && tldrH2.textContent.toLowerCase().includes('tl;dr')) {
+            // 收集h2后面所有p的内容，跳过h3标题本身
+            let tldrText = '';
+            let nextEl = tldrH2.nextElementSibling;
+            while (nextEl && nextEl.tagName !== 'H2') {
+                if (nextEl.tagName === 'P') {
+                    tldrText += nextEl.textContent.trim() + ' ';
+                }
+                nextEl = nextEl.nextElementSibling;
+            }
+            if (tldrText) {
+                document.getElementById('tldr-content').textContent = tldrText.trim().substring(0, 350);
+            }
+        }
+
+        // === 提取论文基本信息（并隐藏该章节）===
+        const headings = content.querySelectorAll('h2');
+        let infoH2 = null;
+        headings.forEach(h => {
+            if (h.textContent.includes('论文基本信息') || h.textContent.includes('论文链接') || h.textContent.toLowerCase().includes('info')) {
+                infoH2 = h;
+            }
+        });
+
+        if (infoH2) {
+            // 隐藏整个"论文基本信息"章节
+            let current = infoH2.nextElementSibling;
+            while (current && current.tagName !== 'H2') {
+                current.style.display = 'none';
+                current = current.nextElementSibling;
+            }
+
+            // === PAPER / CODE: 区分论文链接和代码链接 ===
+            const paperLinksContainer = document.getElementById('paper-links');
+            const codeLinksContainer = document.getElementById('code-links');
+            let paperHtml = '';
+            let codeHtml = '';
+
+            // 先按h3区分
+            const codeH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('代码'));
+            const paperH3 = Array.from(content.querySelectorAll('h3')).find(h => h.textContent.includes('论文链接'));
+
+            if (paperH3) {
+                let el = paperH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    // 也检查纯文本URL
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => paperHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            if (codeH3) {
+                let el = codeH3.nextElementSibling;
+                while (el && el.tagName !== 'H3' && el.tagName !== 'H2') {
+                    const links = el.querySelectorAll('a');
+                    links.forEach(a => {
+                        const url = a.getAttribute('href');
+                        if (url && url.startsWith('http')) {
+                            const label = a.textContent.trim();
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    });
+                    if (!links.length) {
+                        const urlMatches = el.textContent.match(/https?:\/\/[^\s]+/g);
+                        if (urlMatches) {
+                            urlMatches.forEach(url => codeHtml += `<a href="${url}" target="_blank" class="info-link">${url}</a>`);
+                        }
+                    }
+                    el = el.nextElementSibling;
+                }
+            }
+
+            // 如果没有分h3，则按URL特征自动分类
+            if (!paperHtml && !codeHtml) {
+                const allLinks = content.querySelectorAll('a');
+                allLinks.forEach(a => {
+                    const url = a.getAttribute('href') || '';
+                    const label = a.textContent.trim();
+                    if (url.startsWith('http')) {
+                        if (url.includes('github.com') || url.includes('gitlab.com') || url.includes('huggingface.co')) {
+                            codeHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        } else {
+                            paperHtml += `<a href="${url}" target="_blank" class="info-link">${label || url}</a>`;
+                        }
+                    }
+                });
+            }
+
+            if (paperHtml) paperLinksContainer.innerHTML = paperHtml;
+            if (codeHtml) codeLinksContainer.innerHTML = codeHtml;
+
+            // === AUTHORS: 机构+前3作者 ===
+            const authorH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('作者'));
+            const authorContainer = document.getElementById('paper-authors');
+            if (authorH) {
+                const nextEl = authorH.nextElementSibling;
+                if (nextEl) {
+                    const authorLis = nextEl.querySelectorAll('li');
+                    if (authorLis.length > 0) {
+                        const authors = Array.from(authorLis).map(li => li.textContent.trim()).slice(0, 3);
+                        authorContainer.textContent = authors.join(', ');
+                    } else {
+                        // 纯文本：提取机构行和前3个作者
+                        const rawText = nextEl.textContent.trim();
+                        const parts = rawText.split(/[,，;；\n]/);
+                        const top3 = parts.slice(0, 3).join(', ');
+                        authorContainer.textContent = top3;
+                    }
+                }
+            }
+
+            // === KEYWORDS ===
+            const keywordH = Array.from(content.querySelectorAll('h2, h3')).find(h => h.textContent.includes('关键词'));
+            const keywordContainer = document.getElementById('paper-keywords');
+            if (keywordH) {
+                const nextEl = keywordH.nextElementSibling;
+                if (nextEl) {
+                    const keywordLis = nextEl.querySelectorAll('li');
+                    let fullKeywords = '';
+                    if (keywordLis.length > 0) {
+                        fullKeywords = Array.from(keywordLis).map(li => li.textContent.trim()).join(', ');
+                    } else {
+                        fullKeywords = nextEl.textContent.trim();
+                    }
+                    keywordContainer.textContent = fullKeywords;
+                }
+            }
+        }
+
+        // === TOC ===
+        const tocList = document.getElementById('toc-list');
+
+        // Brief 条目 - 指向顶部hero区域
+        const heroSection = document.querySelector('section.mb-6');
+        if (heroSection) {
+            heroSection.id = 'brief';
+            const briefLi = document.createElement('li');
+            const briefA = document.createElement('a');
+            briefA.href = '#brief';
+            briefA.textContent = 'Brief';
+            briefA.className = 'toc-link';
+            briefLi.appendChild(briefA);
+            tocList.appendChild(briefLi);
+        }
+
+        const allHeadings = content.querySelectorAll('h2, h3');
+        const exclude = ['tl;dr', '论文基本信息', '论文链接'];
+
+        allHeadings.forEach((h, i) => {
+            const text = h.textContent.toLowerCase();
+            if (exclude.some(e => text.includes(e.toLowerCase()))) {
+                h.style.display = 'none';
+                let current = h.nextElementSibling;
+                while (current && current.tagName !== 'H2') {
+                    current.style.display = 'none';
+                    current = current.nextElementSibling;
+                }
+                return;
+            }
+
+            const id = `s-${i}`;
+            h.id = id;
+
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `#${id}`;
+            a.textContent = h.textContent;
+            a.className = `toc-link ${h.tagName === 'H3' ? 'h3' : ''}`;
+            li.appendChild(a);
+            tocList.appendChild(li);
+        });
+
+        // === Scroll Highlight ===
+        const tocLinks = tocList.querySelectorAll('.toc-link');
+        const highlight = () => {
+            let current = null;
+            // Brief高亮：当滚动在顶部时
+            if (heroSection && heroSection.getBoundingClientRect().top > -50) {
+                current = 'brief';
+            }
+            allHeadings.forEach(h => {
+                if (h.id && h.getBoundingClientRect().top <= 100) current = h.id;
+            });
+            tocLinks.forEach(link => {
+                link.classList.toggle('active', link.getAttribute('href') === `#${current}`);
+            });
+        };
+        window.addEventListener('scroll', highlight, { passive: true });
+        highlight();
+    </script>
+</body>
+</html>

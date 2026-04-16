@@ -1,0 +1,6 @@
+papers/
+outputs/
+inputs/
+.env
+__pycache__/
+test/
